@@ -1,0 +1,25 @@
+/**
+ * TypeScript 基础配置
+ *
+ * 用于 monorepo 中各项目的继承和共享
+ * 避免在每个项目中重复配置相同的编译器选项
+ */
+{
+  "compilerOptions": {
+    "target": "ES2022",                    // 编译目标：ES2022
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],  // 包含的库文件
+    "module": "ESNext",                    // 模块系统：ESNext
+    "moduleResolution": "bundler",         // 模块解析：bundler 模式（Vite/Turbopack 推荐）
+    "strict": true,                        // 严格类型检查
+    "jsx": "preserve",                     // JSX 转换：保留原样（由 Vite 处理）
+    "esModuleInterop": true,               // 允许默认导入 CommonJS 模块
+    "skipLibCheck": true,                  // 跳过声明文件的类型检查
+    "forceConsistentCasingInFileNames": true,  // 强制文件名大小写一致
+    "resolveJsonModule": true,             // 允许导入 JSON 模块
+    "isolatedModules": true,               // 每个文件独立编译（打包工具必需）
+    "declaration": true,                   // 生成声明文件（.d.ts）
+    "declarationMap": true,                // 生成声明文件的 source map
+    "sourceMap": true,                     // 生成 source map 文件
+    "noUncheckedIndexedAccess": true       // 索引访问返回 T | undefined
+  }
+}

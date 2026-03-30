@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",              // 编译目标：ES2022
+    "module": "commonjs",             // 模块系统：CommonJS（NestJS 默认）
+    "lib": ["ES2022"],                // 包含的库
+    "moduleResolution": "node",       // 模块解析方式：Node.js
+    "rootDir": "src",                 // 源代码根目录
+    "outDir": "dist",                 // 输出目录
+    "strict": true,                   // 启用严格类型检查
+    "esModuleInterop": true,          // 允许默认导入 CommonJS 模块
+    "skipLibCheck": true,             // 跳过声明文件的类型检查
+    "forceConsistentCasingInFileNames": true,  // 强制文件名大小写一致
+    "resolveJsonModule": true,        // 允许导入 JSON 模块
+    "declaration": true,              // 生成声明文件（.d.ts）
+    "declarationMap": true,           // 生成声明文件的 source map
+    "sourceMap": true,                // 生成 source map 文件
+    "experimentalDecorators": true,   // 启用装饰器（NestJS 必需）
+    "emitDecoratorMetadata": true,    // 生成装饰器元数据（依赖注入必需）
+    "strictPropertyInitialization": false,  // 关闭严格的属性初始化检查（允许在构造函数中初始化）
+    "baseUrl": ".",                   // 基础路径
+    "paths": {
+      "@/*": ["src/*"]                // @ 别名指向 src 目录
+    }
+  },
+  "include": ["src/**/*"],            // 包含的源文件
+  "exclude": ["node_modules", "dist"] // 排除的目录
+}

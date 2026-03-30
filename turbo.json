@@ -1,0 +1,21 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],  // 依赖上游包先构建（^build 表示依赖包的 build 任务）
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]  // 构建输出目录（排除缓存）
+    },
+    "dev": {
+      "cache": false,  // 开发模式不缓存
+      "persistent": true  // 持续性任务（不会自动结束，如 dev server）
+    },
+    "lint": {
+      "dependsOn": ["^lint"],  // 依赖上游包先 lint
+      "outputs": []  // 无输出文件
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],  // 类型检查前确保依赖包已构建
+      "outputs": []  // 无输出文件
+    }
+  }
+}

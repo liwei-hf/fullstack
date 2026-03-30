@@ -1,0 +1,99 @@
+// Prisma Schema - 数据库模型定义
+//
+// 数据库：PostgreSQL
+// ORM：Prisma（类型安全的数据库访问层）
+//
+// 核心模型：
+// - User：用户表，包含管理员和普通用户
+// - Session：会话表，管理 JWT Refresh Token 和用户登录状态
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ====================== 枚举类型定义 ======================
+
+// 用户角色
+// - ADMIN：管理员，可访问管理后台
+// - USER：普通用户，仅可访问移动端应用
+enum UserRole {
+  ADMIN
+  USER
+}
+
+// 用户状态
+// - ACTIVE：正常状态，可登录和使用系统
+// - DISABLED：已禁用，无法登录（管理员可操作）
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+// 客户端类型（用于区分登录来源）
+// - ADMIN：管理后台登录
+// - MOBILE：移动端应用登录
+enum ClientType {
+  ADMIN
+  MOBILE
+}
+
+// 会话状态
+// - ACTIVE：活跃会话，Token 有效
+// - REVOKED：已撤销会话，Token 失效（登出、重置密码、禁用用户时撤销）
+enum SessionStatus {
+  ACTIVE
+  REVOKED
+}
+
+// ====================== 数据模型 ======================
+
+// 用户模型
+// 存储用户基本信息、认证凭据和状态
+model User {
+  id            String      @id @default(cuid())  // 用户 ID（cuid 格式）
+  username      String      @unique               // 用户名（唯一）
+  phone         String      @unique               // 手机号（唯一）
+  passwordHash  String                            // bcrypt 加密后的密码哈希
+  nickname      String                            // 用户昵称
+  avatar        String?                           // 头像 URL（可选）
+  role          UserRole    @default(USER)        // 用户角色（默认普通用户）
+  status        UserStatus  @default(ACTIVE)      // 用户状态（默认激活）
+  lastLoginAt   DateTime?                         // 最后登录时间（可选）
+  createdAt     DateTime    @default(now())       // 创建时间
+  updatedAt     DateTime    @updatedAt            // 更新时间（自动更新）
+  sessions      Session[]                         // 关联的会话（一对多）
+
+  // 索引优化查询性能
+  @@index([username])
+  @@index([phone])
+  @@index([role])
+  @@index([status])
+}
+
+// 会话模型
+// 管理用户登录状态和 Refresh Token
+// 支持单会话（移动端）和多会话（管理端）策略
+model Session {
+  id             String        @id @default(cuid())        // 会话 ID
+  userId         String                                    // 用户 ID（外键）
+  clientType     ClientType                                // 客户端类型（ADMIN/MOBILE）
+  deviceId       String?                                   // 设备 ID（可选，用于移动端标识）
+  refreshTokenHash String                                  // Refresh Token 的 SHA256 哈希（不存储明文）
+  status         SessionStatus @default(ACTIVE)            // 会话状态（默认活跃）
+  lastActiveAt   DateTime      @default(now())             // 最后活跃时间
+  revokedAt      DateTime?                                 // 撤销时间（可选）
+  expiresAt      DateTime                                  // 过期时间（默认 7 天）
+  createdAt      DateTime      @default(now())             // 创建时间
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)  // 关联用户（级联删除）
+
+  // 索引优化查询性能
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@index([status])
+  @@index([expiresAt])
+}

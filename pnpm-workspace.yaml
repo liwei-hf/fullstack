@@ -1,0 +1,10 @@
+# pnpm Workspace 配置
+#
+# 定义 monorepo 中的包位置：
+# - apps/*：所有应用程序（admin、mobile、server）
+# - packages/*：所有共享包（shared）
+#
+# pnpm 会自动链接这些包，支持 workspace:* 协议引用
+packages:
+  - apps/*
+  - packages/*

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",                    // 编译目标：ES2020
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],  // 包含的库文件
+    "module": "ESNext",                    // 模块系统：ESNext（Vite 处理打包）
+    "moduleResolution": "bundler",         // 模块解析：bundler 模式（Vite 推荐）
+    "jsx": "react-jsx",                    // JSX 转换：使用新的 JSX 转换（无需导入 React）
+    "strict": true,                        // 严格类型检查
+    "esModuleInterop": true,               // 允许默认导入 CommonJS 模块
+    "skipLibCheck": true,                  // 跳过声明文件的类型检查
+    "forceConsistentCasingInFileNames": true,  // 强制文件名大小写一致
+    "resolveJsonModule": true,             // 允许导入 JSON 模块
+    "isolatedModules": true,               // 每个文件独立编译（Vite 必需）
+    "noEmit": true,                        // 不生成编译输出（Vite 负责打包）
+    "noUncheckedIndexedAccess": true,      // 索引访问返回 T | undefined
+    "baseUrl": ".",                        // 基础路径
+    "paths": {
+      "@/*": ["./src/*"]                   // @ 别名指向 src 目录
+    }
+  },
+  "include": ["src"],                      // 包含的源文件
+  "exclude": ["node_modules", "dist"]      // 排除的目录
+}
