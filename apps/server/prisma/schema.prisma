@@ -50,29 +50,65 @@ enum SessionStatus {
   REVOKED
 }
 
+// Todo 任务状态枚举
+enum TodoStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+// 文档处理状态
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  DELETING
+  DELETE_FAILED
+}
+
+// 部门枚举（用于用户所属部门）
+enum DepartmentName {
+  ENGINEERING  // 研发部
+  HR          // 人事部
+  SALES       // 销售部
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique               // 部门名称
+  description String?                        // 部门描述
+  users       User[]                         // 关联用户
+}
+
 // ====================== 数据模型 ======================
 
 // 用户模型
 // 存储用户基本信息、认证凭据和状态
 model User {
-  id            String      @id @default(cuid())  // 用户 ID（cuid 格式）
-  username      String      @unique               // 用户名（唯一）
-  phone         String      @unique               // 手机号（唯一）
-  passwordHash  String                            // bcrypt 加密后的密码哈希
-  nickname      String                            // 用户昵称
-  avatar        String?                           // 头像 URL（可选）
-  role          UserRole    @default(USER)        // 用户角色（默认普通用户）
-  status        UserStatus  @default(ACTIVE)      // 用户状态（默认激活）
-  lastLoginAt   DateTime?                         // 最后登录时间（可选）
-  createdAt     DateTime    @default(now())       // 创建时间
-  updatedAt     DateTime    @updatedAt            // 更新时间（自动更新）
-  sessions      Session[]                         // 关联的会话（一对多）
+  id            String       @id @default(cuid())  // 用户 ID（cuid 格式）
+  username      String       @unique               // 用户名（唯一）
+  phone         String       @unique               // 手机号（唯一）
+  passwordHash  String                             // bcrypt 加密后的密码哈希
+  role          UserRole     @default(USER)        // 用户角色（默认普通用户）
+  status        UserStatus   @default(ACTIVE)      // 用户状态（默认激活）
+  lastLoginAt   DateTime?                          // 最后登录时间（可选）
+  createdAt     DateTime     @default(now())       // 创建时间
+  updatedAt     DateTime     @updatedAt            // 更新时间（自动更新）
+  departmentId  String?                            // 所属部门 ID（可选）
+  sessions      Session[]                          // 关联的会话（一对多）
+  todos         Todo[]                             // 关联的任务（一对多）
+  createdKnowledgeBases KnowledgeBase[] @relation("KnowledgeBaseCreator")
+  uploadedDocuments Document[]        @relation("DocumentUploader")
+  qaLogs        QaLog[]
+  department    Department?  @relation(fields: [departmentId], references: [id]) // 关联部门
 
   // 索引优化查询性能
   @@index([username])
   @@index([phone])
   @@index([role])
   @@index([status])
+  @@index([departmentId])
 }
 
 // 会话模型
@@ -96,4 +132,96 @@ model Session {
   @@index([refreshTokenHash])
   @@index([status])
   @@index([expiresAt])
+}
+
+// ====================== Todo 任务模型 ======================
+
+// Todo 任务模型
+// 用于管理用户的个人任务列表，支持待办、进行中、已完成三种状态
+model Todo {
+  id          String      @id @default(cuid())      // 任务 ID（cuid 格式）
+  userId      String                                // 所属用户 ID（外键）
+  title       String                                // 任务标题（必填）
+  description String?                               // 任务描述（可选）
+  status      TodoStatus    @default(TODO)          // 任务状态（默认待办）
+  createdAt   DateTime      @default(now())         // 创建时间
+  updatedAt   DateTime      @updatedAt              // 更新时间（自动更新）
+
+  // 关联用户（一个用户可以有多个任务，删除用户时级联删除任务）
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 索引优化查询性能
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ====================== 知识库与 RAG 相关模型 ======================
+
+model KnowledgeBase {
+  id            String     @id @default(cuid())
+  name          String     @unique
+  description   String?
+  createdById   String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  createdBy     User       @relation("KnowledgeBaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  documents     Document[]
+  qaLogs        QaLog[]
+
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model Document {
+  id              String         @id @default(cuid())
+  knowledgeBaseId String
+  uploadedById    String
+  fileName        String
+  fileType        String
+  objectKey       String         @unique
+  status          DocumentStatus @default(UPLOADED)
+  chunkCount      Int            @default(0)
+  characterCount  Int            @default(0)
+  failureReason   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  knowledgeBase   KnowledgeBase  @relation(fields: [knowledgeBaseId], references: [id], onDelete: Restrict)
+  uploadedBy      User           @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  chunks          DocumentChunk[]
+
+  @@index([knowledgeBaseId])
+  @@index([uploadedById])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  sequence   Int
+  content    String
+  excerpt    String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([documentId, sequence])
+}
+
+model QaLog {
+  id              String        @id @default(cuid())
+  knowledgeBaseId String
+  userId          String
+  question        String
+  answer          String?
+  sourceCount     Int           @default(0)
+  createdAt       DateTime      @default(now())
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Restrict)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeBaseId])
+  @@index([userId])
+  @@index([createdAt])
 }

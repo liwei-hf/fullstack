@@ -82,8 +82,6 @@ export class AuthController {
    * - id: 用户 ID
    * - username: 用户名
    * - phone: 手机号
-   * - nickname: 昵称
-   * - avatar: 头像 URL
    * - role: 角色（admin/user）
    * - status: 状态（active/disabled）
    * - sessionId: 当前会话 ID

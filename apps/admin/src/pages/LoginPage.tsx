@@ -34,8 +34,6 @@ interface LoginResponse {
     id: string;
     username: string;
     phone: string;
-    nickname: string;
-    avatar: string | null;
     role: 'admin' | 'user';
     status: 'active' | 'disabled';
     clientType: 'admin' | 'mobile';

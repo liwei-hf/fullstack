@@ -11,6 +11,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
+// 修复 Windows/macOS 终端中文输出乱码问题
+process.env.NODE_NO_WARNINGS = '1';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     cors: {
@@ -33,7 +36,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`API server listening on http://localhost:${port}/api`);
+  console.log(`🚀 API server listening on http://localhost:${port}/api`);
 }
 
 bootstrap();

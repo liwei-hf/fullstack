@@ -4,17 +4,21 @@
  * 核心功能：
  * - 统一请求头处理（Content-Type、Authorization）
  * - Token 自动携带（从 localStorage 读取）
- * - 401 未授权自动跳转登录
+ * - 401 时自动刷新 Token 并重试一次
  * - 统一响应数据解包（返回 data 字段）
  *
  * 使用示例：
  * ```ts
  * const users = await api.get('/admin/users');
- * await api.post('/admin/users', { username, phone, nickname });
+ * await api.post('/admin/users', { username, phone });
  * await api.patch(`/admin/users/${id}`, { status: 'active' });
  * ```
  */
+import type { CurrentUser } from '@fullstack/shared';
+import { useAuthStore } from '@/store/auth-store';
+
 const API_BASE_URL = '/api';
+let refreshPromise: Promise<string | null> | null = null;
 
 /**
  * API 客户端类
@@ -24,15 +28,21 @@ const API_BASE_URL = '/api';
 export class ApiClient {
   private baseUrl: string;
   private getToken: () => string | null;
+  private getRefreshToken: () => string | null;
+  private onAuthRefreshed: (payload: RefreshResponse) => void;
   private onUnauthorized: () => void;
 
   constructor(
     baseUrl: string,
     getToken: () => string | null,
+    getRefreshToken: () => string | null,
+    onAuthRefreshed: (payload: RefreshResponse) => void,
     onUnauthorized: () => void,
   ) {
     this.baseUrl = baseUrl;
     this.getToken = getToken;
+    this.getRefreshToken = getRefreshToken;
+    this.onAuthRefreshed = onAuthRefreshed;
     this.onUnauthorized = onUnauthorized;
   }
 
@@ -50,22 +60,12 @@ export class ApiClient {
    * @param options - fetch 选项（method、body 等）
    * @returns 响应数据（已解包）
    */
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const token = this.getToken();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
+  private async request<T>(endpoint: string, options?: RequestInit, allowRetry = true): Promise<T> {
+    const response = await this.authorizedFetch(endpoint, options, allowRetry);
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    // 401 未授权：清除本地状态并跳转登录
     if (response.status === 401) {
       this.onUnauthorized();
-      throw new Error('Unauthorized');
+      throw new Error('登录已过期，请重新登录');
     }
 
     const data = await response.json();
@@ -110,6 +110,147 @@ export class ApiClient {
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
+
+  async upload<T>(endpoint: string, formData: FormData): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
+  }
+
+  async streamSse<T extends { type: string }>(
+    endpoint: string,
+    body: unknown,
+    onEvent: (event: T) => void,
+  ) {
+    const response = await this.authorizedFetch(
+      endpoint,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+      true,
+    );
+
+    if (response.status === 401) {
+      this.onUnauthorized();
+      throw new Error('登录已过期，请重新登录');
+    }
+
+    if (!response.ok || !response.body) {
+      const error = await response.json().catch(() => ({ message: '流式请求失败' }));
+      throw new Error(error.message || '流式请求失败');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() ?? '';
+
+      for (const frame of frames) {
+        const lines = frame.split('\n');
+        const dataLine = lines.find((line) => line.startsWith('data:'));
+        if (!dataLine) {
+          continue;
+        }
+
+        const payload = JSON.parse(dataLine.slice(5).trim()) as T;
+        onEvent(payload);
+      }
+    }
+  }
+
+  private async authorizedFetch(endpoint: string, options?: RequestInit, allowRetry = true) {
+    const token = this.getToken();
+    const headers: HeadersInit = {
+      ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options?.headers || {}),
+      ...(token && { Authorization: `Bearer ${token}` }),
+    };
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    if (response.status !== 401 || !allowRetry || endpoint === '/auth/refresh') {
+      return response;
+    }
+
+    const refreshedToken = await this.refreshAccessToken();
+    if (!refreshedToken) {
+      return response;
+    }
+
+    const retryHeaders: HeadersInit = {
+      ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options?.headers || {}),
+      Authorization: `Bearer ${refreshedToken}`,
+    };
+
+    return fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers: retryHeaders,
+    });
+  }
+
+  private async refreshAccessToken() {
+    if (refreshPromise) {
+      return refreshPromise;
+    }
+
+    refreshPromise = (async () => {
+      const refreshToken = this.getRefreshToken();
+      if (!refreshToken) {
+        return null;
+      }
+
+      const response = await fetch(`${this.baseUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const result = await response.json();
+      const data = result.data as RefreshResponse;
+      this.onAuthRefreshed(data);
+      return data.tokens.accessToken;
+    })();
+
+    try {
+      return await refreshPromise;
+    } finally {
+      refreshPromise = null;
+    }
+  }
+}
+
+interface RefreshResponse {
+  user: CurrentUser;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+  };
 }
 
 /**
@@ -119,6 +260,11 @@ export class ApiClient {
  * Zustand persist 中间件将状态存储为 JSON 字符串
  */
 function getToken(): string | null {
+  const token = useAuthStore.getState().token;
+  if (token) {
+    return token;
+  }
+
   const auth = localStorage.getItem('auth-storage');
   if (auth) {
     try {
@@ -131,15 +277,47 @@ function getToken(): string | null {
   return null;
 }
 
+function getRefreshToken(): string | null {
+  const refreshToken = useAuthStore.getState().refreshToken;
+  if (refreshToken) {
+    return refreshToken;
+  }
+
+  const auth = localStorage.getItem('auth-storage');
+  if (auth) {
+    try {
+      const parsed = JSON.parse(auth);
+      return parsed.state?.refreshToken || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function onAuthRefreshed(payload: RefreshResponse) {
+  useAuthStore.getState().setAuth(
+    payload.user,
+    payload.tokens.accessToken,
+    payload.tokens.refreshToken,
+  );
+}
+
 /**
  * 未授权处理
  *
  * 清除本地认证状态并重定向到登录页
  */
 function onUnauthorized() {
-  localStorage.removeItem('auth-storage');
+  useAuthStore.getState().logout();
   window.location.href = '/login';
 }
 
 // 导出 API 客户端单例
-export const api = new ApiClient(API_BASE_URL, getToken, onUnauthorized);
+export const api = new ApiClient(
+  API_BASE_URL,
+  getToken,
+  getRefreshToken,
+  onAuthRefreshed,
+  onUnauthorized,
+);

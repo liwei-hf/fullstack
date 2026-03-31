@@ -1,12 +1,20 @@
+/*
+ * @Author: liwei
+ * @Date: 2026-03-31 10:45:47
+ * @LastEditors: liwei
+ * @LastEditTime: 2026-03-31 10:45:58
+ * @Description: 
+ * 
+ */
 /**
  * Vite 配置文件
  *
  * 核心配置说明：
- * - plugins：使用 @vitejs/plugin-react 支持 React JSX
- * - resolve.alias：配置 @ 别名指向 src 目录，简化导入路径
- * - server：开发服务器配置
- *   - port: 3001 - 开发端口
- *   - proxy: /api 代理到后端服务（http://localhost:3000）
+ * - plugins: 使用 @vitejs/plugin-react 支持 React JSX
+ * - resolve.alias: 配置 @ 别名指向 src 目录，简化导入路径
+ * - server: 开发服务器配置
+ *   - port: 3333 - 开发端口
+ *   - proxy: /api 代理到后端服务（http://localhost:3334）
  *
  * 代理配置作用：
  * 前端请求 /api/xxx 时，自动转发到后端服务
@@ -24,10 +32,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3001,  // 开发服务器端口
+    port: 3335,  // 开发服务器端口
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',  // 后端服务地址
+        target: 'http://localhost:3334',  // 后端服务地址
         changeOrigin: true,  // 修改请求头中的 Origin
       },
     },

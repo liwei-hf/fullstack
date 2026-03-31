@@ -14,6 +14,7 @@ import App from './App';
 import './index.css';
 
 // 创建根节点并渲染应用
+// 启用 StrictMode 严格模式（开发模式下会渲染两次，帮助发现副作用问题）
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

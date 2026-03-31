@@ -4,7 +4,7 @@
  * 功能说明：
  * - 用户列表展示（表格形式）
  * - 分页查询（支持页码切换）
- * - 搜索过滤（前端过滤用户名、手机号、昵称）
+ * - 搜索过滤（前端过滤用户名、手机号）
  * - 用户管理操作：
  *   - 新增用户
  *   - 编辑用户信息
@@ -20,7 +20,7 @@
  * - shadcn/ui Skeleton：加载骨架屏
  * - Toast：操作反馈
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -51,13 +51,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { api } from '@/utils/api';
-import type { UserListItem } from '@fullstack/shared';
+import type { UserListItem, Department } from '@fullstack/shared';
 import {
   Plus,
   MoreVertical,
@@ -66,6 +74,7 @@ import {
   UserCheck,
   UserX,
   Search,
+  Trash2,
 } from 'lucide-react';
 
 /**
@@ -92,14 +101,13 @@ export default function UserListPage() {
   const [formData, setFormData] = useState({
     username: '',
     phone: '',
-    nickname: '',
+    departmentId: '',
   });
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const initialized = useRef(false);
+  const prevPage = useRef(page);
 
-  /**
-   * 获取用户列表
-   *
-   * 调用 API：GET /api/admin/users?page=1&pageSize=10
-   */
+  // 获取用户列表
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -117,16 +125,34 @@ export default function UserListPage() {
   };
 
   // 组件挂载或页码变化时获取数据
+  // 使用 useRef 防止 StrictMode 下重复请求
   useEffect(() => {
+    // 如果是 StrictMode 的第二次调用且参数没变，跳过
+    if (initialized.current && prevPage.current === page) {
+      return;
+    }
+    initialized.current = true;
+    prevPage.current = page;
     fetchUsers();
-  }, [page]);
+    fetchDepartments();
+  }, [page, toast]);
+
+  // 获取部门列表
+  const fetchDepartments = async () => {
+    try {
+      const response = await api.get<Department[]>('/departments');
+      setDepartments(response);
+    } catch {
+      // 静默失败，部门列表为可选
+    }
+  };
 
   /**
    * 新增用户 - 打开弹窗
    */
   const handleAdd = () => {
     setEditingUser(null);
-    setFormData({ username: '', phone: '', nickname: '' });
+    setFormData({ username: '', phone: '', departmentId: '' });
     setModalOpen(true);
   };
 
@@ -138,7 +164,7 @@ export default function UserListPage() {
     setFormData({
       username: record.username,
       phone: record.phone,
-      nickname: record.nickname,
+      departmentId: record.department?.id || '',
     });
     setModalOpen(true);
   };
@@ -177,12 +203,36 @@ export default function UserListPage() {
     try {
       await api.patch(`/admin/users/${id}/status`, { status });
       toast({
-        title: status === 'active' ? '用户已启用' : '用户已禁用',
+        title: status === 'disabled' ? '已禁用用户' : '已启用用户',
       });
       fetchUsers();
     } catch {
       toast({
-        title: '操作失败',
+        title: '更新状态失败',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  /**
+   * 删除用户
+   *
+   * 调用 API：DELETE /api/admin/users/:id
+   * 只有停用的用户才能删除
+   * 删除前需要二次确认
+   */
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除这个用户吗？此操作不可恢复！')) {
+      return;
+    }
+    try {
+      await api.delete(`/admin/users/${id}`);
+      toast({ title: '用户已删除' });
+      fetchUsers();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : '删除失败';
+      toast({
+        title: msg,
         variant: 'destructive',
       });
     }
@@ -213,12 +263,11 @@ export default function UserListPage() {
     }
   };
 
-  // 前端搜索过滤（根据关键词过滤用户名、手机号、昵称）
+  // 前端搜索过滤（根据关键词过滤用户名、手机号）
   const filteredUsers = users.filter(
     (user) =>
       user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.phone.includes(searchTerm) ||
-      user.nickname.toLowerCase().includes(searchTerm.toLowerCase()),
+      user.phone.includes(searchTerm),
   );
 
   return (
@@ -245,7 +294,7 @@ export default function UserListPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="搜索用户名、手机号或昵称..."
+              placeholder="搜索用户名或手机号..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -272,6 +321,7 @@ export default function UserListPage() {
                 <TableRow>
                   <TableHead>用户</TableHead>
                   <TableHead>手机号</TableHead>
+                  <TableHead>部门</TableHead>
                   <TableHead>角色</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>最近登录</TableHead>
@@ -281,7 +331,7 @@ export default function UserListPage() {
               <TableBody>
                 {filteredUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                       暂无用户数据
                     </TableCell>
                   </TableRow>
@@ -292,16 +342,22 @@ export default function UserListPage() {
                         <div className="flex items-center gap-3">
                           <Avatar className="w-9 h-9">
                             <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-600 text-white text-sm font-medium">
-                              {user.nickname?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase() || 'U'}
+                              {user.username?.[0]?.toUpperCase() || 'U'}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{user.nickname}</div>
-                            <div className="text-sm text-gray-500">@{user.username}</div>
+                            <div className="font-medium">{user.username}</div>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono">{user.phone}</TableCell>
+                      <TableCell>
+                        {user.department ? (
+                          <Badge variant="outline">{user.department.name}</Badge>
+                        ) : (
+                          <span className="text-gray-400">未分配</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
                           {user.role === 'admin' ? '管理员' : '普通用户'}
@@ -352,6 +408,18 @@ export default function UserListPage() {
                                 </>
                               )}
                             </DropdownMenuItem>
+                            {user.status === 'disabled' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(user.id)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  删除
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -421,12 +489,22 @@ export default function UserListPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="nickname">昵称</Label>
-              <Input
-                id="nickname"
-                value={formData.nickname}
-                onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
-              />
+              <Label htmlFor="department">部门</Label>
+              <Select
+                value={formData.departmentId}
+                onValueChange={(value) => setFormData({ ...formData, departmentId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择部门" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments?.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

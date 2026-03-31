@@ -37,11 +37,11 @@ export class LoginDto {
   clientType!: 'admin' | 'mobile';
 
   /**
-   * 设备 ID（仅移动端登录时需要）
+   * 设备 ID（可选）
    * 用于标识移动设备，支持单会话策略
+   * Web 端 H5 可不传
    */
-  @ValidateIf((o) => o.clientType === 'mobile')
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   deviceId?: string;
 }

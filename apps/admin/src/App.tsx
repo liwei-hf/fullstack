@@ -17,6 +17,8 @@ import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import UserListPage from '@/pages/UserListPage';
 import SettingsPage from '@/pages/SettingsPage';
+import TodoListPage from '@/pages/TodoListPage';
+import KnowledgeBasePage from '@/pages/KnowledgeBasePage';
 import { useAuthStore } from '@/store/auth-store';
 
 /**
@@ -41,11 +43,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * - GET /login - 登录页
  * - GET / - 仪表盘（受保护）
  * - GET /users - 用户管理（受保护）
+ * - GET /todos - 任务管理（受保护）
  * - GET /settings - 设置（受保护）
  */
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -65,10 +68,26 @@ function App() {
           }
         />
         <Route
+          path="/todos"
+          element={
+            <ProtectedRoute>
+              <TodoListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/settings"
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/knowledge-base"
+          element={
+            <ProtectedRoute>
+              <KnowledgeBasePage />
             </ProtectedRoute>
           }
         />

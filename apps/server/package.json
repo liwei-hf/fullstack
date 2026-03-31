@@ -3,19 +3,26 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "NODE_OPTIONS=--no-deprecation nest start --watch",
     "build": "nest build",
-    "start": "node dist/main",
+    "start": "NODE_OPTIONS=--no-deprecation node dist/main",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prisma": "prisma",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
+    "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.49",
     "@fullstack/shared": "workspace:*",
+    "@langchain/community": "^1.1.27",
+    "@langchain/openai": "^1.4.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/core": "^10.0.0",
@@ -24,20 +31,32 @@
     "@nestjs/platform-express": "^10.0.0",
     "@prisma/client": "^5.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "ai": "^6.0.141",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
+    "dotenv": "^17.3.1",
+    "langchain": "^1.2.39",
+    "mammoth": "^1.12.0",
+    "minio": "^8.0.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
+    "@nestjs/testing": "^10.4.22",
     "@types/express": "^4.17.17",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^4.0.0",
+    "@types/supertest": "^7.2.0",
+    "jest": "^30.3.0",
     "prisma": "^5.0.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }

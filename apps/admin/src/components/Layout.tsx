@@ -31,6 +31,8 @@ import {
   LayoutDashboard,
   Settings,
   Menu,
+  ClipboardList,
+  Database,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth-store';
@@ -46,13 +48,15 @@ import { cn } from '@/lib/utils';
 const navigation = [
   { name: '仪表盘', href: '/', icon: LayoutDashboard },
   { name: '用户管理', href: '/users', icon: Users },
+  { name: '任务管理', href: '/todos', icon: ClipboardList },
+  { name: '知识库', href: '/knowledge-base', icon: Database },
   { name: '设置', href: '/settings', icon: Settings },
 ];
 
 /**
  * 布局组件
  *
- * @param children - 页面内容（由路由注入）
+ * @param  - 页面内容（由路由注入）
  */
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -132,7 +136,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {sidebarOpen && (
                   <div className="flex-1 text-left overflow-hidden">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {user?.nickname || user?.username}
+                      {user?.username}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
                       {user?.role === 'admin' ? '管理员' : '用户'}

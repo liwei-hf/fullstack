@@ -7,10 +7,11 @@
  * - 更新用户信息
  * - 禁用/启用用户
  * - 重置用户密码
+ * - 删除用户
  *
  * 路由前缀：/api/admin/users
  */
-import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 
 @Controller('admin/users')
@@ -23,7 +24,7 @@ export class UsersController {
    * 查询参数：
    * - page: 页码（默认 1）
    * - pageSize: 每页数量（默认 10）
-   * - q: 搜索关键字（模糊匹配用户名、手机号、昵称）
+   * - q: 搜索关键字（模糊匹配用户名、手机号）
    */
   @Get()
   async listUsers(
@@ -46,11 +47,10 @@ export class UsersController {
    * 请求体：
    * - username: 用户名（必填，需唯一）
    * - phone: 手机号（必填，需唯一）
-   * - nickname: 昵称（必填）
-   * - avatar: 头像 URL（可选）
+   * - departmentId: 部门 ID（可选）
    */
   @Post()
-  async createUser(@Body() body: { username: string; phone: string; nickname: string; avatar?: string | null }) {
+  async createUser(@Body() body: { username: string; phone: string; departmentId?: string }) {
     return { data: await this.usersService.createUser(body) };
   }
 
@@ -60,13 +60,12 @@ export class UsersController {
    * 请求体（所有字段可选）：
    * - username: 新用户名
    * - phone: 新手机号
-   * - nickname: 新昵称
-   * - avatar: 新头像 URL
+   * - departmentId: 部门 ID
    */
   @Patch(':id')
   async updateUser(
     @Param('id') id: string,
-    @Body() body: { username?: string; phone?: string; nickname?: string; avatar?: string | null },
+    @Body() body: { username?: string; phone?: string; departmentId?: string },
   ) {
     return { data: await this.usersService.updateUser(id, body) };
   }
@@ -97,5 +96,19 @@ export class UsersController {
   @Post(':id/reset-password')
   async resetPassword(@Param('id') id: string) {
     return { data: await this.usersService.resetPassword(id) };
+  }
+
+  /**
+   * 删除用户
+   *
+   * 物理删除用户记录及其关联的会话
+   * 删除前需要二次确认
+   *
+   * 返回：
+   * - success: 是否成功
+   */
+  @Delete(':id')
+  async deleteUser(@Param('id') id: string) {
+    return { data: await this.usersService.deleteUser(id) };
   }
 }

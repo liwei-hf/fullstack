@@ -38,6 +38,18 @@ export type UserStatus = (typeof USER_STATUSES)[number];
 export const CLIENT_TYPES = ['admin', 'mobile'] as const;
 export type ClientType = (typeof CLIENT_TYPES)[number];
 
+// ==================== 部门相关类型 ====================
+
+/**
+ * 部门信息
+ */
+export interface Department {
+  id: string;
+  name: string;
+  description: string | null;
+  userCount?: number;
+}
+
 // ==================== 认证相关类型 ====================
 
 /**
@@ -58,7 +70,7 @@ export interface AuthTokens {
  * 当前登录用户信息
  *
  * 登录后保存在前端 Zustand store 中，包含：
- * - 基本身份信息（id、username、phone、nickname、avatar）
+ * - 基本身份信息（id、username、phone）
  * - 权限信息（role、status、clientType）
  * - 会话信息（sessionId，用于登出时撤销会话）
  */
@@ -66,8 +78,6 @@ export interface CurrentUser {
   id: string;
   username: string;
   phone: string;
-  nickname: string;
-  avatar: string | null;
   role: UserRole;
   status: UserStatus;
   clientType: ClientType;
@@ -147,18 +157,18 @@ export const DEFAULT_PAGE_SIZE = 10;
  * - 基本身份信息
  * - 角色和状态
  * - 时间戳（最后登录时间、创建时间、更新时间）
+ * - 部门信息
  */
 export interface UserListItem {
   id: string;
   username: string;
   phone: string;
-  nickname: string;
-  avatar: string | null;
   role: UserRole;
   status: UserStatus;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  department: Department | null;
 }
 
 /**
@@ -170,8 +180,7 @@ export interface UserListItem {
 export interface UserFormPayload {
   username: string;
   phone: string;
-  nickname: string;
-  avatar?: string | null;
+  departmentId?: string;
 }
 
 /**
@@ -192,3 +201,43 @@ export interface UpdateUserStatusPayload {
 export interface ApiEnvelope<T> {
   data: T;
 }
+
+// ==================== 导出 Todo 相关类型 ====================
+
+export type {
+  TodoStatus,
+  Todo,
+  CreateTodoRequest,
+  UpdateTodoRequest,
+  TodoListQuery
+} from './todo';
+
+export {
+  TODO_STATUSES,
+  TODO_STATUS_LABELS
+} from './todo';
+
+// ==================== 导出 AI SQL 流式查询类型 ====================
+
+export type {
+  AiSqlStreamRequest,
+  AiSqlSummaryItem,
+  AiSqlSseEvent,
+} from './ai';
+
+// ==================== 导出知识库/RAG 类型 ====================
+
+export type {
+  KnowledgeBaseStatus,
+  KnowledgeBaseItem,
+  KnowledgeBaseDetail,
+  KnowledgeBaseDocumentItem,
+  CreateKnowledgeBaseRequest,
+  RagChatStreamRequest,
+  RagSourceItem,
+  RagSseEvent,
+} from './rag';
+
+export {
+  KNOWLEDGE_BASE_STATUSES,
+} from './rag';

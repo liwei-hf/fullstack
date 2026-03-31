@@ -153,8 +153,6 @@ export class AuthService {
       id: entity.id,
       username: entity.username,
       phone: entity.phone,
-      nickname: entity.nickname,
-      avatar: entity.avatar,
       role: entity.role.toLowerCase(),
       status: entity.status.toLowerCase(),
       sessionId: user.sessionId,
@@ -181,8 +179,6 @@ export class AuthService {
       sessionId,
       username: user.username,
       phone: user.phone,
-      nickname: user.nickname,
-      avatar: user.avatar,
       role: user.role.toLowerCase(),
       status: user.status.toLowerCase(),
       clientType,
@@ -193,8 +189,6 @@ export class AuthService {
         id: user.id,
         username: user.username,
         phone: user.phone,
-        nickname: user.nickname,
-        avatar: user.avatar,
         role: user.role.toLowerCase() as 'admin' | 'user',
         status: user.status.toLowerCase() as 'active' | 'disabled',
         clientType,
@@ -212,15 +206,11 @@ export class AuthService {
    * 检查客户端类型访问权限
    *
    * - admin 客户端：只有管理员角色可以登录
-   * - mobile 客户端：只有普通用户可以登录
+   * - mobile 客户端：管理员和普通用户都可以登录
    */
   private ensureClientAccess(user: User, clientType: 'admin' | 'mobile') {
     if (clientType === 'admin' && user.role !== 'ADMIN') {
       throw new ForbiddenException('Admin access required');
-    }
-
-    if (clientType === 'mobile' && user.role !== 'USER') {
-      throw new ForbiddenException('Mobile login only supports user accounts');
     }
   }
 

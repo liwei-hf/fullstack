@@ -60,7 +60,7 @@ export class UsersService {
    *
    * 查询条件：
    * - 固定筛选 role=USER（只查普通用户，不包含管理员）
-   * - 可选关键字搜索（用户名、手机号、昵称模糊匹配）
+ * - 可选关键字搜索（用户名、手机号模糊匹配）
    * - 按创建时间倒序排序
    *
    * 返回格式：
@@ -80,7 +80,6 @@ export class UsersService {
             OR: [
               { username: { contains: keyword, mode: 'insensitive' } },
               { phone: { contains: keyword, mode: 'insensitive' } },
-              { nickname: { contains: keyword, mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -92,6 +91,9 @@ export class UsersService {
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
+        include: {
+          department: true,
+        },
       }),
       this.prisma.user.count({ where }),
     ]);
@@ -117,7 +119,7 @@ export class UsersService {
    *
    * @returns 返回创建后的用户信息（脱敏）
    */
-  async createUser(dto: { username: string; phone: string; nickname: string; avatar?: string | null }) {
+  async createUser(dto: { username: string; phone: string; departmentId?: string }) {
     await this.ensureUniqueFields(dto.username, dto.phone);
 
     const defaultPassword = this.configService.get<string>('DEFAULT_USER_PASSWORD') || 'ChangeMe123!';
@@ -127,11 +129,13 @@ export class UsersService {
       data: {
         username: dto.username,
         phone: dto.phone,
-        nickname: dto.nickname,
-        avatar: dto.avatar,
         role: UserRole.USER,
         status: UserStatus.ACTIVE,
         passwordHash,
+        departmentId: dto.departmentId,
+      },
+      include: {
+        department: true,
       },
     });
 
@@ -148,7 +152,7 @@ export class UsersService {
    *
    * @returns 返回更新后的用户信息（脱敏）
    */
-  async updateUser(id: string, dto: { username?: string; phone?: string; nickname?: string; avatar?: string | null }) {
+  async updateUser(id: string, dto: { username?: string; phone?: string; departmentId?: string }) {
     const existingUser = await this.findUserOrThrow(id);
 
     if (dto.username && dto.username !== existingUser.username) {
@@ -164,8 +168,10 @@ export class UsersService {
       data: {
         username: dto.username,
         phone: dto.phone,
-        nickname: dto.nickname,
-        avatar: dto.avatar,
+        departmentId: dto.departmentId,
+      },
+      include: {
+        department: true,
       },
     });
 
@@ -192,6 +198,9 @@ export class UsersService {
       where: { id },
       data: {
         status: nextStatus,
+      },
+      include: {
+        department: true,
       },
     });
 
@@ -231,6 +240,39 @@ export class UsersService {
       success: true,
       defaultPassword,
     };
+  }
+
+  /**
+   * 删除用户
+   *
+   * 业务逻辑：
+   * 1. 检查用户是否存在
+   * 2. 检查用户状态是否为 DISABLED（只有停用的才能删除）
+   * 3. 删除用户关联的所有会话
+   * 4. 删除用户记录
+   *
+   * @returns 返回成功标志
+   * @throws ConflictException 当用户状态不是 DISABLED 时
+   */
+  async deleteUser(id: string) {
+    const user = await this.findUserOrThrow(id);
+
+    // 只有停用的用户才能删除
+    if (user.status !== UserStatus.DISABLED) {
+      throw new ConflictException('只能删除已停用的用户');
+    }
+
+    // 先删除关联的会话（外键约束）
+    await this.prisma.session.deleteMany({
+      where: { userId: id },
+    });
+
+    // 删除用户
+    await this.prisma.user.delete({
+      where: { id },
+    });
+
+    return { success: true };
   }
 
   /**
@@ -288,25 +330,23 @@ export class UsersService {
     id: string;
     username: string;
     phone: string;
-    nickname: string;
-    avatar: string | null;
     role: UserRole;
     status: UserStatus;
     lastLoginAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    department?: { id: string; name: string; description: string | null } | null;
   }) {
     return {
       id: user.id,
       username: user.username,
       phone: user.phone,
-      nickname: user.nickname,
-      avatar: user.avatar,
       role: user.role.toLowerCase(),
       status: user.status.toLowerCase(),
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
+      department: user.department ?? null,
     };
   }
 }

@@ -16,6 +16,10 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { TodosModule } from './todos/todos.module';
+import { DepartmentsModule } from './departments/departments.module';
+import { AiModule } from './ai/ai.module';
+import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 
 @Module({
   imports: [
@@ -28,6 +32,10 @@ import { SessionsModule } from './sessions/sessions.module';
     SessionsModule,     // 会话管理
     UsersModule,        // 用户管理
     AuthModule,         // 认证模块
+    TodosModule,        // 任务管理模块
+    DepartmentsModule,  // 部门管理模块
+    AiModule,           // AI 查询模块
+    KnowledgeBaseModule, // 文档知识库与 RAG 模块
   ],
 })
 export class AppModule {}
