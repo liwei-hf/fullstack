@@ -32,9 +32,12 @@
 
     <div class="card">
       <p class="section-title">回答结果</p>
-      <div class="answer-content">
-        {{ answer || '这里会显示流式回答内容。' }}
-      </div>
+      <div
+        v-if="answer"
+        class="answer-content markdown-body"
+        v-html="renderedAnswer"
+      />
+      <div v-else class="answer-content empty-answer">这里会显示流式回答内容。</div>
     </div>
 
     <div class="card">
@@ -55,6 +58,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { KnowledgeBaseItem, RagSourceItem, RagSseEvent } from '@fullstack/shared'
 import { api, streamSse } from '@/utils/request'
+import { renderMarkdown } from '@/utils/markdown'
 
 const router = useRouter()
 const knowledgeBases = ref<KnowledgeBaseItem[]>([])
@@ -67,6 +71,7 @@ const loading = ref(false)
 const selectedKnowledgeBase = computed(() =>
   knowledgeBases.value.find((item) => item.id === selectedId.value) || null,
 )
+const renderedAnswer = computed(() => renderMarkdown(answer.value))
 
 const fetchKnowledgeBases = async () => {
   try {
@@ -213,10 +218,63 @@ onMounted(() => {
 
 .answer-content {
   min-height: 220px;
-  white-space: pre-wrap;
   font-size: 16px;
   line-height: 1.9;
   color: #0f172a;
+}
+
+.empty-answer {
+  color: #64748b;
+}
+
+:deep(.markdown-body p) {
+  margin: 0 0 12px;
+}
+
+:deep(.markdown-body ul),
+:deep(.markdown-body ol) {
+  margin: 0 0 12px 20px;
+}
+
+:deep(.markdown-body li) {
+  margin: 4px 0;
+}
+
+:deep(.markdown-body strong) {
+  font-weight: 700;
+}
+
+:deep(.markdown-body code) {
+  background: #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.92em;
+}
+
+:deep(.markdown-body pre) {
+  margin: 0 0 12px;
+  padding: 14px;
+  border-radius: 14px;
+  overflow-x: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+:deep(.markdown-body pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+:deep(.markdown-body a) {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+:deep(.markdown-body blockquote) {
+  margin: 0 0 12px;
+  padding-left: 12px;
+  border-left: 3px solid #cbd5e1;
+  color: #475569;
 }
 
 .source-list {

@@ -38,17 +38,22 @@
       </div>
 
       <div v-if="errorMessage" class="error-box">{{ errorMessage }}</div>
-      <div v-else-if="answer" class="answer-content">{{ answer }}</div>
+      <div
+        v-else-if="answer"
+        class="answer-content markdown-body"
+        v-html="renderedAnswer"
+      />
       <div v-else class="empty-box">输入问题后，这里会展示自然语言答案。</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AiSqlSseEvent } from '@fullstack/shared'
 import { streamSse } from '@/utils/request'
+import { renderMarkdown } from '@/utils/markdown'
 
 const examples = [
   '今天完成了哪些待办？',
@@ -62,6 +67,7 @@ const question = ref('')
 const answer = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
+const renderedAnswer = computed(() => renderMarkdown(answer.value))
 
 const handleAsk = async () => {
   if (!question.value.trim()) {
@@ -213,5 +219,55 @@ const handleEvent = (event: AiSqlSseEvent) => {
 .error-box {
   background: #FEF2F2;
   color: #B91C1C;
+}
+
+:deep(.markdown-body p) {
+  margin: 0 0 12px;
+}
+
+:deep(.markdown-body ul),
+:deep(.markdown-body ol) {
+  margin: 0 0 12px 20px;
+}
+
+:deep(.markdown-body li) {
+  margin: 4px 0;
+}
+
+:deep(.markdown-body strong) {
+  font-weight: 700;
+}
+
+:deep(.markdown-body code) {
+  background: #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.92em;
+}
+
+:deep(.markdown-body pre) {
+  margin: 0 0 12px;
+  padding: 14px;
+  border-radius: 14px;
+  overflow-x: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+:deep(.markdown-body pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+:deep(.markdown-body a) {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+:deep(.markdown-body blockquote) {
+  margin: 0 0 12px;
+  padding-left: 12px;
+  border-left: 3px solid #cbd5e1;
+  color: #475569;
 }
 </style>

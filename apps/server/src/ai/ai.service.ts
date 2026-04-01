@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import type { AiSqlSummaryItem } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiSqlError } from './ai.errors';
-import { buildAnswerMessages, buildSqlGenerationMessages } from './ai.prompts';
+import { buildSqlAnswerMessages, buildSqlGenerationMessages } from './prompts';
 import { OpenAiCompatibleProvider } from './openai-compatible.provider';
 import { SqlValidator } from './sql-validator';
 import { AiSqlUserContext } from './ai.types';
@@ -149,7 +149,7 @@ export class AiService {
 
       await this.provider.streamText(
         {
-          messages: buildAnswerMessages({
+          messages: buildSqlAnswerMessages({
             question,
             role: user.role,
             rows: serializableRows,

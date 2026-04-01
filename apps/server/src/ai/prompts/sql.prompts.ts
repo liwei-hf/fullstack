@@ -1,4 +1,8 @@
-import { ChatMessage } from './ai.types';
+import { ChatMessage } from '../ai.types';
+import {
+  buildCommonChineseAnswerRules,
+  buildCommonInsufficientInfoRules,
+} from './common.prompts';
 
 // 把当前可查询的 schema 明确写进 prompt，是 NL2SQL 准确率和可控性的基础。
 const SQL_SCHEMA_DESCRIPTION = `
@@ -38,6 +42,12 @@ const SQL_SCHEMA_DESCRIPTION = `
 - "Todo"."userId" = "User"."id"
 `;
 
+/**
+ * SQL 生成 prompt
+ *
+ * 这里专门负责“自然语言 -> SQL”的提示词构造，
+ * 让 service 只做编排，不再同时承担 prompt 维护职责。
+ */
 export function buildSqlGenerationMessages(
   question: string,
   user: { sub: string; role: 'admin' | 'user' },
@@ -104,12 +114,16 @@ ${roleRules}
   ];
 }
 
-export function buildAnswerMessages(input: {
+/**
+ * SQL 结果解释 prompt
+ *
+ * 第二次模型调用不再关心 SQL，只负责把结构化查询结果转成用户可读的中文答案。
+ */
+export function buildSqlAnswerMessages(input: {
   question: string;
   role: 'admin' | 'user';
   rows: Record<string, unknown>[];
 }): ChatMessage[] {
-  // 第二次模型调用不再关心 SQL，只负责把结构化查询结果转成用户可读的中文答案。
   return [
     {
       role: 'system',
@@ -118,11 +132,9 @@ export function buildAnswerMessages(input: {
 你的任务是基于 SQL 查询结果，直接用简洁自然语言回答用户问题。
 回答要求：
 1. 直接回答，不要提到模型、SQL、数据库、上下文
-2. 使用中文
-3. 先给结论，再补充关键观察
-4. 如果没有数据，明确说“当前没有查到符合条件的数据”
-5. 不要编造结果，只能依据给定结果回答
-6. 输出纯文本，适合流式展示
+2. 输出纯文本，适合流式展示
+${buildCommonChineseAnswerRules()}
+${buildCommonInsufficientInfoRules()}
 `.trim(),
     },
     {

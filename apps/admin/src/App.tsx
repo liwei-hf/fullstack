@@ -19,6 +19,8 @@ import UserListPage from '@/pages/UserListPage';
 import SettingsPage from '@/pages/SettingsPage';
 import TodoListPage from '@/pages/TodoListPage';
 import KnowledgeBasePage from '@/pages/KnowledgeBasePage';
+import KnowledgeBaseChatPage from '@/pages/KnowledgeBaseChatPage';
+import SqlQueryPage from '@/pages/SqlQueryPage';
 import { useAuthStore } from '@/store/auth-store';
 
 /**
@@ -88,6 +90,22 @@ function App() {
           element={
             <ProtectedRoute>
               <KnowledgeBasePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/knowledge-base/chat"
+          element={
+            <ProtectedRoute>
+              <KnowledgeBaseChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ai/sql"
+          element={
+            <ProtectedRoute>
+              <SqlQueryPage />
             </ProtectedRoute>
           }
         />

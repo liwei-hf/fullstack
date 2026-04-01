@@ -33,6 +33,8 @@ import {
   Menu,
   ClipboardList,
   Database,
+  BrainCircuit,
+  MessageSquareText,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth-store';
@@ -49,7 +51,9 @@ const navigation = [
   { name: '仪表盘', href: '/', icon: LayoutDashboard },
   { name: '用户管理', href: '/users', icon: Users },
   { name: '任务管理', href: '/todos', icon: ClipboardList },
-  { name: '知识库', href: '/knowledge-base', icon: Database },
+  { name: '知识库管理', href: '/knowledge-base', icon: Database },
+  { name: '知识库问答', href: '/knowledge-base/chat', icon: MessageSquareText },
+  { name: '智能问数', href: '/ai/sql', icon: BrainCircuit },
   { name: '设置', href: '/settings', icon: Settings },
 ];
 

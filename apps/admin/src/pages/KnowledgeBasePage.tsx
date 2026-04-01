@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   CreateKnowledgeBaseRequest,
+  KnowledgeBaseChunkStrategy,
   KnowledgeBaseDetail,
   KnowledgeBaseDocumentItem,
   KnowledgeBaseItem,
-  RagSseEvent,
-  RagSourceItem,
+  UploadKnowledgeBaseDocumentRequest,
 } from '@fullstack/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Toaster } from '@/components/ui/toaster';
 import { api } from '@/utils/api';
 import { useToast } from '@/hooks/use-toast';
-import { Toaster } from '@/components/ui/toaster';
 
 const STATUS_LABELS: Record<string, string> = {
   UPLOADED: '待处理',
@@ -25,6 +25,20 @@ const STATUS_LABELS: Record<string, string> = {
   DELETE_FAILED: '删除失败',
 };
 
+const CHUNK_STRATEGY_LABELS: Record<KnowledgeBaseChunkStrategy, string> = {
+  fixed: '固定长度',
+  paragraph: '段落优先',
+  heading: '标题结构',
+};
+
+const CHUNK_STRATEGY_OPTIONS: KnowledgeBaseChunkStrategy[] = ['fixed', 'paragraph', 'heading'];
+
+/**
+ * 知识库管理页
+ *
+ * 这个页面只负责知识库和文档维护，不承载问答能力，
+ * 让“知识库管理”和“知识库问答”在后台中职责分离、入口分离。
+ */
 export default function KnowledgeBasePage() {
   const { toast } = useToast();
   const [items, setItems] = useState<KnowledgeBaseItem[]>([]);
@@ -34,15 +48,13 @@ export default function KnowledgeBasePage() {
   const [loading, setLoading] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [asking, setAsking] = useState(false);
   const [createForm, setCreateForm] = useState<CreateKnowledgeBaseRequest>({
     name: '',
     description: '',
   });
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [sources, setSources] = useState<RagSourceItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedChunkStrategy, setSelectedChunkStrategy] =
+    useState<KnowledgeBaseChunkStrategy>('fixed');
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -56,10 +68,11 @@ export default function KnowledgeBasePage() {
       setItems(response);
 
       const nextSelectedId =
-        preferredId ||
-        selectedId ||
-        response[0]?.id ||
-        '';
+        preferredId !== undefined
+          ? preferredId || response[0]?.id || ''
+          : response.some((item) => item.id === selectedId)
+            ? selectedId
+            : response[0]?.id || '';
       setSelectedId(nextSelectedId);
     } catch (error) {
       toast({
@@ -150,6 +163,10 @@ export default function KnowledgeBasePage() {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append(
+        'chunkStrategy',
+        (selectedChunkStrategy satisfies UploadKnowledgeBaseDocumentRequest['chunkStrategy']),
+      );
       await api.upload(`/knowledge-base/${selectedId}/documents/upload`, formData);
       setSelectedFile(null);
       toast({ title: '文件已上传，后台正在处理中' });
@@ -190,16 +207,13 @@ export default function KnowledgeBasePage() {
       return;
     }
 
-    if (!confirm('确定要删除当前知识库吗？只有空知识库才能删除。')) {
+    if (!confirm('确定要删除当前知识库吗？只有空知识库才能删除，相关问答日志也会一并清理。')) {
       return;
     }
 
     try {
       await api.delete(`/knowledge-base/${selectedId}`);
       toast({ title: '知识库已删除' });
-      setAnswer('');
-      setSources([]);
-      setQuestion('');
       setSelectedId('');
       await fetchKnowledgeBases();
     } catch (error) {
@@ -210,63 +224,12 @@ export default function KnowledgeBasePage() {
     }
   };
 
-  const handleAsk = async () => {
-    if (!selectedId) {
-      toast({
-        title: '请先选择知识库',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!question.trim()) {
-      toast({
-        title: '请输入问题',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setAnswer('');
-    setSources([]);
-    setAsking(true);
-
-    try {
-      await api.streamSse<RagSseEvent>(
-        `/knowledge-base/${selectedId}/chat/stream`,
-        { question: question.trim() },
-        (event) => {
-          if (event.type === 'answer_delta') {
-            setAnswer((previous) => previous + event.delta);
-            return;
-          }
-
-          if (event.type === 'sources') {
-            setSources(event.items);
-            return;
-          }
-
-          if (event.type === 'error') {
-            throw new Error(event.message);
-          }
-        },
-      );
-    } catch (error) {
-      toast({
-        title: error instanceof Error ? error.message : '知识库问答失败',
-        variant: 'destructive',
-      });
-    } finally {
-      setAsking(false);
-    }
-  };
-
   return (
     <>
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <Card className="h-fit">
           <CardHeader>
-            <CardTitle>知识库</CardTitle>
+            <CardTitle>知识库列表</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
@@ -309,9 +272,7 @@ export default function KnowledgeBasePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-gray-900">{item.name}</p>
-                      <p className="mt-1 text-sm text-gray-500">
-                        {item.description || '暂无描述'}
-                      </p>
+                      <p className="mt-1 text-sm text-gray-500">{item.description || '暂无描述'}</p>
                     </div>
                     <Badge variant="outline">
                       {item.readyDocumentCount}/{item.documentCount}
@@ -329,7 +290,7 @@ export default function KnowledgeBasePage() {
               <div>
                 <CardTitle>{detail?.name || '请选择知识库'}</CardTitle>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {detail?.description || '当前知识库用于管理文档与智能问答。'}
+                  {detail?.description || '当前页面只负责知识库和文档维护。'}
                 </p>
               </div>
               {selectedId && (
@@ -350,6 +311,30 @@ export default function KnowledgeBasePage() {
                 <p className="text-xs text-muted-foreground">
                   仅支持 PDF / Markdown / TXT / DOCX，单文件不超过 20MB。
                 </p>
+                <div className="space-y-2 pt-2">
+                  <p className="text-sm font-medium text-gray-700">切片方式</p>
+                  <select
+                    value={selectedChunkStrategy}
+                    onChange={(event) =>
+                      setSelectedChunkStrategy(event.target.value as KnowledgeBaseChunkStrategy)
+                    }
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {CHUNK_STRATEGY_OPTIONS.map((strategy) => (
+                      <option key={strategy} value={strategy}>
+                        {CHUNK_STRATEGY_LABELS[strategy]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedChunkStrategy === 'fixed' &&
+                      '适合通用文档，按固定长度切片并保留重叠窗口。'}
+                    {selectedChunkStrategy === 'paragraph' &&
+                      '优先按自然段落切片，适合员工手册、制度说明等正文型文档。'}
+                    {selectedChunkStrategy === 'heading' &&
+                      '优先按标题和章节结构切片，适合 Markdown 或层级清晰的规范文档。'}
+                  </p>
+                </div>
               </div>
               <Button onClick={handleUpload} disabled={uploading || !selectedId}>
                 {uploading ? '上传中...' : '上传到当前知识库'}
@@ -369,6 +354,7 @@ export default function KnowledgeBasePage() {
                       <TableRow>
                         <TableHead>文件名</TableHead>
                         <TableHead>状态</TableHead>
+                        <TableHead>切片方式</TableHead>
                         <TableHead>切片数</TableHead>
                         <TableHead>上传人</TableHead>
                         <TableHead>操作</TableHead>
@@ -390,13 +376,11 @@ export default function KnowledgeBasePage() {
                               {STATUS_LABELS[document.status] || document.status}
                             </Badge>
                           </TableCell>
+                          <TableCell>{CHUNK_STRATEGY_LABELS[document.chunkStrategy]}</TableCell>
                           <TableCell>{document.chunkCount}</TableCell>
                           <TableCell>{document.uploadedBy.username}</TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              onClick={() => handleDeleteDocument(document.id)}
-                            >
+                            <Button variant="ghost" onClick={() => handleDeleteDocument(document.id)}>
                               删除
                             </Button>
                           </TableCell>
@@ -413,49 +397,18 @@ export default function KnowledgeBasePage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>知识库问答</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder={
-                  selectedItem
-                    ? `向“${selectedItem.name}”提问，例如：这个文档主要讲了什么？`
-                    : '请先选择知识库，再开始提问'
-                }
-                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-3 text-sm"
-              />
-              <Button onClick={handleAsk} disabled={asking || !selectedId}>
-                {asking ? '回答生成中...' : '开始问答'}
-              </Button>
-
-              <div className="rounded-2xl border bg-slate-50 p-5">
-                <p className="mb-3 text-sm font-medium text-slate-700">回答结果</p>
-                <div className="min-h-[180px] whitespace-pre-wrap text-[15px] leading-7 text-slate-900">
-                  {answer || '这里会展示流式回答。'}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-white p-5">
-                <p className="mb-3 text-sm font-medium text-slate-700">引用来源</p>
-                {sources.length > 0 ? (
-                  <div className="space-y-3">
-                    {sources.map((source) => (
-                      <div key={source.chunkId} className="rounded-xl border border-slate-200 p-3">
-                        <p className="text-sm font-medium text-slate-900">{source.documentName}</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">{source.snippet}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">命中的文档片段会显示在这里。</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          {selectedItem && (
+            <Card>
+              <CardHeader>
+                <CardTitle>使用说明</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-muted-foreground">
+                <p>当前页面只负责知识库和文档维护。</p>
+                <p>如果要基于当前知识库提问，请进入左侧导航里的“知识库问答”。</p>
+                <p>如果要直接查业务数据，请进入左侧导航里的“智能问数”。</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
       <Toaster />

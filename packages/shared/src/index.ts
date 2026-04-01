@@ -229,10 +229,12 @@ export type {
 
 export type {
   KnowledgeBaseStatus,
+  KnowledgeBaseChunkStrategy,
   KnowledgeBaseItem,
   KnowledgeBaseDetail,
   KnowledgeBaseDocumentItem,
   CreateKnowledgeBaseRequest,
+  UploadKnowledgeBaseDocumentRequest,
   RagChatStreamRequest,
   RagSourceItem,
   RagSseEvent,
@@ -240,4 +242,5 @@ export type {
 
 export {
   KNOWLEDGE_BASE_STATUSES,
+  KNOWLEDGE_BASE_CHUNK_STRATEGIES,
 } from './rag';

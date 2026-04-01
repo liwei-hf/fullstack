@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { KnowledgeBaseChunkStrategy } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   RAG_CHUNK_OVERLAP,
   RAG_CHUNK_SIZE,
   RAG_SOURCE_SNIPPET_MAX_CHARS,
 } from './knowledge-base.constants';
+import { fromPersistenceChunkStrategy } from './knowledge-base-chunk-strategy.util';
 import { KnowledgeBaseParserService } from './knowledge-base-parser.service';
 import { KnowledgeBaseRetrievalService } from './knowledge-base-retrieval.service';
 import { KnowledgeBaseStorageService } from './knowledge-base-storage.service';
@@ -49,7 +51,8 @@ export class KnowledgeBaseIngestionService {
         buffer: fileBuffer,
       });
 
-      const chunks = this.splitIntoChunks(parsed.content);
+      const chunkStrategy = fromPersistenceChunkStrategy(document.chunkStrategy);
+      const chunks = this.splitIntoChunks(parsed.content, chunkStrategy);
 
       await this.prisma.$transaction(async (tx) => {
         await tx.documentChunk.deleteMany({
@@ -65,6 +68,7 @@ export class KnowledgeBaseIngestionService {
               excerpt: content.slice(0, RAG_SOURCE_SNIPPET_MAX_CHARS),
               metadata: {
                 fileType: parsed.fileType,
+                chunkStrategy,
               },
             })),
           });
@@ -122,7 +126,33 @@ export class KnowledgeBaseIngestionService {
    * - 优先按段落切，再按句子切，最后退化到固定窗口
    * - 这样能满足 MVP 的上下文连续性，也不会额外引入更多依赖路径不稳定因素
    */
-  private splitIntoChunks(content: string) {
+  private splitIntoChunks(content: string, strategy: KnowledgeBaseChunkStrategy) {
+    switch (strategy) {
+      case 'paragraph':
+        return this.splitByParagraph(content);
+      case 'heading':
+        return this.splitByHeading(content);
+      case 'fixed':
+      default:
+        return this.splitByFixedSize(content);
+    }
+  }
+
+  private splitByFixedSize(content: string) {
+    const chunks: string[] = [];
+    const step = Math.max(1, RAG_CHUNK_SIZE - RAG_CHUNK_OVERLAP);
+
+    for (let index = 0; index < content.length; index += step) {
+      const chunk = content.slice(index, index + RAG_CHUNK_SIZE).trim();
+      if (chunk) {
+        chunks.push(chunk);
+      }
+    }
+
+    return chunks;
+  }
+
+  private splitByParagraph(content: string) {
     const segments = content
       .split(/\n{2,}/)
       .map((item) => item.trim())
@@ -167,14 +197,69 @@ export class KnowledgeBaseIngestionService {
           continue;
         }
 
-        for (let index = 0; index < sentence.length; index += RAG_CHUNK_SIZE - RAG_CHUNK_OVERLAP) {
-          chunks.push(sentence.slice(index, index + RAG_CHUNK_SIZE).trim());
-        }
+        chunks.push(...this.splitByFixedSize(sentence));
         current = '';
       }
     }
 
     pushCurrent();
     return chunks.filter(Boolean);
+  }
+
+  private splitByHeading(content: string) {
+    const lines = content
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const sections: string[] = [];
+    let currentHeading = '';
+    let currentBody: string[] = [];
+
+    const pushSection = () => {
+      const section = [currentHeading, ...currentBody].filter(Boolean).join('\n');
+      if (section.trim()) {
+        sections.push(section.trim());
+      }
+      currentHeading = '';
+      currentBody = [];
+    };
+
+    for (const line of lines) {
+      if (this.isHeadingLine(line)) {
+        pushSection();
+        currentHeading = line;
+        continue;
+      }
+
+      currentBody.push(line);
+    }
+
+    pushSection();
+
+    if (sections.length === 0) {
+      return this.splitByParagraph(content);
+    }
+
+    const chunks: string[] = [];
+    for (const section of sections) {
+      if (section.length <= RAG_CHUNK_SIZE) {
+        chunks.push(section);
+        continue;
+      }
+
+      chunks.push(...this.splitByParagraph(section));
+    }
+
+    return chunks.filter(Boolean);
+  }
+
+  private isHeadingLine(line: string) {
+    return (
+      /^#{1,6}\s+/.test(line) ||
+      /^第[\d一二三四五六七八九十百千]+[章节条]\s*/.test(line) ||
+      /^[\d]+(\.[\d]+)*[、.)．]?\s+/.test(line) ||
+      /^[一二三四五六七八九十百千]+[、.．]\s*/.test(line)
+    );
   }
 }

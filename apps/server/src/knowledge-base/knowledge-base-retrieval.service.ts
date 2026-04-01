@@ -7,10 +7,16 @@ import {
   RAG_SOURCE_SNIPPET_MAX_CHARS,
   RAG_VECTOR_TOP_K,
 } from './knowledge-base.constants';
+import { normalizeDocumentFileName } from './knowledge-base-file-name.util';
 import { KnowledgeBaseModelService } from './knowledge-base-model.service';
 import { KnowledgeBaseRerankService } from './knowledge-base-rerank.service';
-import type { RetrievalCandidate } from './knowledge-base.types';
+import type { RagRetrievalResult, RetrievalCandidate } from './knowledge-base.types';
 
+/**
+ * 检索服务
+ *
+ * 负责向量召回、rerank、上下文预算控制，以及最终给回答模型准备上下文文本。
+ */
 @Injectable()
 export class KnowledgeBaseRetrievalService {
   private readonly logger = new Logger(KnowledgeBaseRetrievalService.name);
@@ -22,6 +28,7 @@ export class KnowledgeBaseRetrievalService {
     private readonly rerankService: KnowledgeBaseRerankService,
   ) {}
 
+  // pgvector 是检索层的底座，这里启动时按需兜底，避免首次调用直接报错。
   async ensureVectorSupport() {
     if (this.vectorReady) {
       return;
@@ -40,6 +47,12 @@ export class KnowledgeBaseRetrievalService {
     }
   }
 
+  /**
+   * 文档向量化
+   *
+   * ingestion 在切片完成后调用这个方法，把 chunk 文本批量转成 embedding，
+   * 再写回 DocumentChunk.embedding，供后续相似度检索使用。
+   */
   async embedChunks(chunkIds: string[], contents: string[]) {
     await this.ensureVectorSupport();
     const embeddings = await this.modelService.createEmbeddingModel().embedDocuments(contents);
@@ -56,13 +69,34 @@ export class KnowledgeBaseRetrievalService {
     }
   }
 
-  async retrieveContext(knowledgeBaseId: string, question: string) {
+  /**
+   * 检索当前知识库上下文
+   *
+   * 流程：
+   * 1. 对用户问题做 embedding
+   * 2. 在 pgvector 中召回 topK 候选
+   * 3. 可选 rerank
+   * 4. 按字符预算和单文档数量上限裁剪上下文
+   */
+  async retrieveContext(
+    knowledgeBaseId: string,
+    question: string,
+    requestId?: string,
+  ): Promise<RagRetrievalResult> {
+    const retrievalStartedAt = Date.now();
+    const embeddingModelInfo = this.modelService.getEmbeddingModelInfo();
+    const rerankModelInfo = this.modelService.getRerankModelInfo();
+
+    const vectorSupportStartedAt = Date.now();
     await this.ensureVectorSupport();
-    const [queryEmbedding] = await this.modelService
-      .createEmbeddingModel()
-      .embedDocuments([question]);
+    const vectorSupportDurationMs = Date.now() - vectorSupportStartedAt;
+
+    const queryEmbeddingStartedAt = Date.now();
+    const [queryEmbedding] = await this.modelService.createEmbeddingModel().embedDocuments([question]);
+    const queryEmbeddingDurationMs = Date.now() - queryEmbeddingStartedAt;
 
     const vectorLiteral = this.vectorToSqlLiteral(queryEmbedding);
+    const vectorQueryStartedAt = Date.now();
     const rows = await this.prisma.$queryRawUnsafe<RetrievalCandidate[]>(
       `
         SELECT
@@ -83,23 +117,80 @@ export class KnowledgeBaseRetrievalService {
       `,
       knowledgeBaseId,
     );
+    const vectorQueryDurationMs = Date.now() - vectorQueryStartedAt;
 
     if (!rows.length) {
+      const metrics = {
+        vectorSupportDurationMs,
+        queryEmbeddingDurationMs,
+        vectorQueryDurationMs,
+        rerankDurationMs: 0,
+        contextBuildDurationMs: 0,
+        totalRetrievalDurationMs: Date.now() - retrievalStartedAt,
+        initialCandidateCount: 0,
+        finalCandidateCount: 0,
+        finalContextChars: 0,
+        rerankApplied: false,
+      };
+
+      this.logger.log(
+        JSON.stringify({
+          requestId,
+          stage: 'rag_retrieval_completed',
+          embeddingModel: embeddingModelInfo.model,
+          embeddingProvider: embeddingModelInfo.provider,
+          rerankModel: rerankModelInfo?.model ?? null,
+          rerankProvider: rerankModelInfo?.provider ?? null,
+          ...metrics,
+        }),
+      );
+
       return {
         candidates: [] as RetrievalCandidate[],
         sources: [],
         contextText: '',
+        metrics,
       };
     }
 
+    const rerankStartedAt = Date.now();
     const reranked = await this.rerankService.rerank(
       question,
       rows.map((row) => ({
         ...row,
+        documentName: normalizeDocumentFileName(row.documentName),
         score: Number(row.score),
       })),
     );
-    const selected = this.buildContext(reranked);
+    const rerankDurationMs = Date.now() - rerankStartedAt;
+
+    const contextBuildStartedAt = Date.now();
+    const { selected, finalContextChars } = this.buildContext(reranked);
+    const contextBuildDurationMs = Date.now() - contextBuildStartedAt;
+    const metrics = {
+      vectorSupportDurationMs,
+      queryEmbeddingDurationMs,
+      vectorQueryDurationMs,
+      rerankDurationMs,
+      contextBuildDurationMs,
+      totalRetrievalDurationMs: Date.now() - retrievalStartedAt,
+      initialCandidateCount: rows.length,
+      finalCandidateCount: selected.length,
+      finalContextChars,
+      rerankApplied: true,
+    };
+
+    this.logger.log(
+      JSON.stringify({
+        requestId,
+        stage: 'rag_retrieval_completed',
+        embeddingModel: embeddingModelInfo.model,
+        embeddingProvider: embeddingModelInfo.provider,
+        rerankModel: rerankModelInfo?.model ?? null,
+        rerankProvider: rerankModelInfo?.provider ?? null,
+        ...metrics,
+      }),
+    );
 
     return {
       candidates: selected,
@@ -118,9 +209,11 @@ export class KnowledgeBaseRetrievalService {
           ].join('\n');
         })
         .join('\n\n'),
+      metrics,
     };
   }
 
+  // 最终上下文不是简单取前 N 条，而是同时受总 chunk 数、单文档占比和字符预算控制。
   private buildContext(candidates: RetrievalCandidate[]) {
     const selected: RetrievalCandidate[] = [];
     const documentUsage = new Map<string, number>();
@@ -153,9 +246,13 @@ export class KnowledgeBaseRetrievalService {
       }),
     );
 
-    return selected;
+    return {
+      selected,
+      finalContextChars: currentChars,
+    };
   }
 
+  // pgvector 需要把 number[] 序列化成 vector literal，这里统一处理精度和格式。
   private vectorToSqlLiteral(vector: number[]) {
     return `[${vector.map((value) => Number(value).toFixed(8)).join(',')}]`;
   }

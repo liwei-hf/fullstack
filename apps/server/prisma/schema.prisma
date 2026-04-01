@@ -67,6 +67,13 @@ enum DocumentStatus {
   DELETE_FAILED
 }
 
+// 文档切片策略
+enum DocumentChunkStrategy {
+  FIXED
+  PARAGRAPH
+  HEADING
+}
+
 // 部门枚举（用于用户所属部门）
 enum DepartmentName {
   ENGINEERING  // 研发部
@@ -179,6 +186,7 @@ model Document {
   uploadedById    String
   fileName        String
   fileType        String
+  chunkStrategy   DocumentChunkStrategy @default(FIXED)
   objectKey       String         @unique
   status          DocumentStatus @default(UPLOADED)
   chunkCount      Int            @default(0)
@@ -202,6 +210,7 @@ model DocumentChunk {
   sequence   Int
   content    String
   excerpt    String
+  embedding  Unsupported("vector")?
   metadata   Json?
   createdAt  DateTime @default(now())
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)

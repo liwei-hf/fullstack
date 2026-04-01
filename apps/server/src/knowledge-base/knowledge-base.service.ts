@@ -10,12 +10,20 @@ import type {
   KnowledgeBaseItem,
 } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { fromPersistenceChunkStrategy } from './knowledge-base-chunk-strategy.util';
+import { normalizeDocumentFileName } from './knowledge-base-file-name.util';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
 
+/**
+ * 知识库核心服务
+ *
+ * 负责知识库本身的 CRUD，以及文档列表这类偏资源管理的查询逻辑。
+ */
 @Injectable()
 export class KnowledgeBaseService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // 创建知识库时先校验重名，避免后续上传文档时出现归属混乱。
   async createKnowledgeBase(
     dto: { name: string; description?: string },
     user: AuthenticatedRequestUser,
@@ -58,6 +66,7 @@ export class KnowledgeBaseService {
     };
   }
 
+  // 列表页主要关注数量和状态聚合，因此这里直接在 service 里做轻量映射。
   async listKnowledgeBases(): Promise<KnowledgeBaseItem[]> {
     const items = await this.prisma.knowledgeBase.findMany({
       orderBy: { updatedAt: 'desc' },
@@ -82,6 +91,7 @@ export class KnowledgeBaseService {
     });
   }
 
+  // 详情页用于展示单个知识库的基础信息和可用文档数。
   async getKnowledgeBase(id: string): Promise<KnowledgeBaseDetail> {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
@@ -112,6 +122,8 @@ export class KnowledgeBaseService {
     };
   }
 
+  // 当前版本只允许删除空知识库，避免把对象存储和向量清理耦合进一次删除里。
+  // 但问答日志只是知识库的派生历史数据，所以这里允许一并清掉，避免空知识库被 qaLog 外键拦住。
   async deleteKnowledgeBase(id: string, user: AuthenticatedRequestUser) {
     this.ensureAdmin(user);
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
@@ -131,10 +143,18 @@ export class KnowledgeBaseService {
       throw new ConflictException('请先清空知识库中的文档后再删除');
     }
 
-    await this.prisma.knowledgeBase.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.qaLog.deleteMany({
+        where: { knowledgeBaseId: id },
+      });
+
+      await tx.knowledgeBase.delete({ where: { id } });
+    });
+
     return { success: true };
   }
 
+  // 文档列表会把持久化层的枚举转换成前端更友好的共享契约枚举。
   async listDocuments(knowledgeBaseId: string): Promise<KnowledgeBaseDocumentItem[]> {
     await this.ensureKnowledgeBaseExists(knowledgeBaseId);
     const documents = await this.prisma.document.findMany({
@@ -148,8 +168,9 @@ export class KnowledgeBaseService {
     return documents.map((document) => ({
       id: document.id,
       knowledgeBaseId: document.knowledgeBaseId,
-      fileName: document.fileName,
+      fileName: normalizeDocumentFileName(document.fileName),
       fileType: document.fileType,
+      chunkStrategy: fromPersistenceChunkStrategy(document.chunkStrategy),
       objectKey: document.objectKey,
       status: document.status,
       chunkCount: document.chunkCount,
@@ -164,6 +185,7 @@ export class KnowledgeBaseService {
     }));
   }
 
+  // 问答前先用这个方法快速判断知识库里是否存在 READY 文档。
   async countReadyDocuments(knowledgeBaseId: string) {
     return this.prisma.document.count({
       where: {
@@ -173,6 +195,7 @@ export class KnowledgeBaseService {
     });
   }
 
+  // 统一的存在性校验，避免多个 service 重复写 not found 逻辑。
   async ensureKnowledgeBaseExists(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({ where: { id } });
     if (!knowledgeBase) {

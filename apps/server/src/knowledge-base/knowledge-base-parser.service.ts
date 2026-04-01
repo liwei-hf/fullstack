@@ -1,13 +1,27 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { extname } from 'path';
 import mammoth from 'mammoth';
+import pdfParse from 'pdf-parse';
 import {
   SUPPORTED_DOCUMENT_EXTENSIONS,
 } from './knowledge-base.constants';
 import type { ParsedDocumentPayload } from './knowledge-base.types';
 
+/**
+ * 文档解析服务
+ *
+ * 只负责把不同类型的文件转成“统一纯文本”，不关心后续怎么切片、怎么检索。
+ */
 @Injectable()
 export class KnowledgeBaseParserService {
+  /**
+   * 把上传的文件解析成纯文本
+   *
+   * 当前版本按文件类型分别处理：
+   * - PDF: pdf-parse
+   * - DOCX: mammoth
+   * - TXT/Markdown: 直接按 utf-8 读取
+   */
   async parseDocument(file: {
     originalname: string;
     mimetype: string;
@@ -20,19 +34,8 @@ export class KnowledgeBaseParserService {
 
     let content = '';
     if (extension === '.pdf') {
-      const pdfModule = (await import('pdf-parse/dist/pdf-parse/esm/index.js')) as unknown as {
-        PDFParse: new (options: { data: Uint8Array }) => {
-          getText(): Promise<{ text: string }>;
-          destroy(): Promise<void>;
-        };
-      };
-      const { PDFParse } = pdfModule;
-      const parser = new PDFParse({
-        data: new Uint8Array(file.buffer),
-      });
-      const result = await parser.getText();
+      const result = await pdfParse(file.buffer);
       content = result.text;
-      await parser.destroy();
     } else if (extension === '.docx') {
       const result = await mammoth.extractRawText({ buffer: file.buffer });
       content = result.value;
@@ -51,6 +54,7 @@ export class KnowledgeBaseParserService {
     };
   }
 
+  // 清洗掉空字符和过多空行，避免后续切片阶段产生大量低质量 chunk。
   private normalizeContent(content: string) {
     return content
       .replace(/\r\n/g, '\n')

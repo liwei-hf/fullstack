@@ -7,6 +7,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Client } from 'minio';
 
+/**
+ * 对象存储服务
+ *
+ * 统一封装 MinIO 的上传、下载和删除，业务层只关心 objectKey，不直接处理 SDK 细节。
+ */
 @Injectable()
 export class KnowledgeBaseStorageService implements OnModuleInit {
   private readonly logger = new Logger(KnowledgeBaseStorageService.name);
@@ -17,6 +22,7 @@ export class KnowledgeBaseStorageService implements OnModuleInit {
     this.bucketName = this.configService.get<string>('MINIO_BUCKET') ?? null;
   }
 
+  // 模块启动时兜底初始化 bucket，减少首次上传时的环境依赖问题。
   async onModuleInit() {
     if (!this.isConfigured()) {
       this.logger.warn('MinIO 未配置，文档上传能力暂不可用');
@@ -37,6 +43,7 @@ export class KnowledgeBaseStorageService implements OnModuleInit {
     }
   }
 
+  // 上传原始文件到对象存储，供后续异步解析和重试使用。
   async uploadObject(objectKey: string, fileBuffer: Buffer, contentType: string) {
     const client = this.getClientOrThrow();
 
@@ -45,6 +52,7 @@ export class KnowledgeBaseStorageService implements OnModuleInit {
     });
   }
 
+  // 下载对象时统一转成 Buffer，方便解析器直接消费。
   async getObjectBuffer(objectKey: string) {
     const client = this.getClientOrThrow();
     const stream = await client.getObject(this.bucketName!, objectKey);
@@ -59,6 +67,7 @@ export class KnowledgeBaseStorageService implements OnModuleInit {
     });
   }
 
+  // 删除对象存储中的原始文件。
   async removeObject(objectKey: string) {
     const client = this.getClientOrThrow();
     await client.removeObject(this.bucketName!, objectKey);
@@ -73,6 +82,7 @@ export class KnowledgeBaseStorageService implements OnModuleInit {
     );
   }
 
+  // 没配置 MinIO 时直接阻断文档链路，避免静默失败。
   private getClientOrThrow() {
     if (!this.client || !this.bucketName) {
       throw new InternalServerErrorException('MinIO 未配置完成，暂时无法处理文档');

@@ -4,16 +4,27 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { KnowledgeBaseDocumentItem } from '@fullstack/shared';
+import type { KnowledgeBaseChunkStrategy, KnowledgeBaseDocumentItem } from '@fullstack/shared';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { RAG_UPLOAD_MAX_FILE_SIZE } from './knowledge-base.constants';
+import {
+  DEFAULT_CHUNK_STRATEGY,
+  fromPersistenceChunkStrategy,
+  toPersistenceChunkStrategy,
+} from './knowledge-base-chunk-strategy.util';
+import { normalizeDocumentFileName } from './knowledge-base-file-name.util';
 import { KnowledgeBaseIngestionService } from './knowledge-base-ingestion.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { KnowledgeBaseStorageService } from './knowledge-base-storage.service';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
 
+/**
+ * 文档管理服务
+ *
+ * 负责上传文档、写入文档元数据、触发后台处理，以及删除文档时的状态流转。
+ */
 @Injectable()
 export class KnowledgeBaseDocumentService {
   constructor(
@@ -23,6 +34,13 @@ export class KnowledgeBaseDocumentService {
     private readonly ingestionService: KnowledgeBaseIngestionService,
   ) {}
 
+  /**
+   * 上传文档
+   *
+   * 这里故意把“上传成功”和“处理完成”拆成两个阶段：
+   * - 当前接口快速返回，提升上传体验
+   * - 解析、切片、向量化在后台异步执行，避免接口长时间阻塞
+   */
   async uploadDocument(
     knowledgeBaseId: string,
     file: {
@@ -32,6 +50,7 @@ export class KnowledgeBaseDocumentService {
       buffer: Buffer;
     } | undefined,
     user: AuthenticatedRequestUser,
+    chunkStrategy: KnowledgeBaseChunkStrategy = DEFAULT_CHUNK_STRATEGY,
   ): Promise<KnowledgeBaseDocumentItem> {
     this.ensureAdmin(user);
     await this.knowledgeBaseService.ensureKnowledgeBaseExists(knowledgeBaseId);
@@ -44,7 +63,9 @@ export class KnowledgeBaseDocumentService {
       throw new BadRequestException('单个文件大小不能超过 20MB');
     }
 
+    // MinIO 中存储的是 objectKey，原始文件名单独保存在数据库里，方便后续展示和纠错。
     const extension = extname(file.originalname).toLowerCase();
+    const normalizedFileName = normalizeDocumentFileName(file.originalname);
     const objectKey = `${knowledgeBaseId}/${randomUUID()}${extension}`;
     await this.storageService.uploadObject(objectKey, file.buffer, file.mimetype);
 
@@ -52,8 +73,9 @@ export class KnowledgeBaseDocumentService {
       data: {
         knowledgeBaseId,
         uploadedById: user.sub,
-        fileName: file.originalname,
+        fileName: normalizedFileName,
         fileType: file.mimetype || extension.replace('.', '').toUpperCase(),
+        chunkStrategy: toPersistenceChunkStrategy(chunkStrategy),
         objectKey,
         status: 'UPLOADED',
       },
@@ -62,13 +84,15 @@ export class KnowledgeBaseDocumentService {
       },
     });
 
+    // 上传接口不等待处理结束，避免大文件解析和 embedding 拖慢接口响应。
     void this.ingestionService.processDocument(document.id);
 
     return {
       id: document.id,
       knowledgeBaseId: document.knowledgeBaseId,
-      fileName: document.fileName,
+      fileName: normalizeDocumentFileName(document.fileName),
       fileType: document.fileType,
+      chunkStrategy: fromPersistenceChunkStrategy(document.chunkStrategy),
       objectKey: document.objectKey,
       status: document.status,
       chunkCount: document.chunkCount,
@@ -83,6 +107,12 @@ export class KnowledgeBaseDocumentService {
     };
   }
 
+  /**
+   * 删除文档
+   *
+   * 先把状态改为 DELETING，再删对象存储和数据库记录。
+   * 这样即使中途失败，前端和检索层也知道这份文档已经不应该继续参与问答。
+   */
   async deleteDocument(documentId: string, user: AuthenticatedRequestUser) {
     this.ensureAdmin(user);
 
@@ -122,6 +152,7 @@ export class KnowledgeBaseDocumentService {
     }
   }
 
+  // 当前版本只有管理员可以维护知识库文档，普通用户只负责问答。
   private ensureAdmin(user: AuthenticatedRequestUser) {
     if (user.role !== 'admin') {
       throw new ForbiddenException('只有管理员可以管理知识库文档');

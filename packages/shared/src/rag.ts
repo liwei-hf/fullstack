@@ -30,6 +30,22 @@ export const KNOWLEDGE_BASE_STATUSES = [
 export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
 
 /**
+ * 文档切片策略
+ *
+ * 说明：
+ * - fixed: 固定长度切片，适合通用文档和 MVP 默认策略
+ * - paragraph: 段落优先切片，适合制度、手册等自然正文
+ * - heading: 标题结构切片，适合章节层级清晰的文档
+ */
+export const KNOWLEDGE_BASE_CHUNK_STRATEGIES = [
+  'fixed',
+  'paragraph',
+  'heading',
+] as const;
+
+export type KnowledgeBaseChunkStrategy = (typeof KNOWLEDGE_BASE_CHUNK_STRATEGIES)[number];
+
+/**
  * 知识库列表项
  */
 export interface KnowledgeBaseItem {
@@ -60,6 +76,7 @@ export interface KnowledgeBaseDocumentItem {
   knowledgeBaseId: string;
   fileName: string;
   fileType: string;
+  chunkStrategy: KnowledgeBaseChunkStrategy;
   objectKey: string;
   status: KnowledgeBaseStatus;
   chunkCount: number;
@@ -86,6 +103,13 @@ export interface CreateKnowledgeBaseRequest {
  */
 export interface RagChatStreamRequest {
   question: string;
+}
+
+/**
+ * 上传文档请求
+ */
+export interface UploadKnowledgeBaseDocumentRequest {
+  chunkStrategy: KnowledgeBaseChunkStrategy;
 }
 
 /**
