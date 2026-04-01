@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
 import type { Response } from 'express';
 import type { AiSqlSummaryItem } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { AiSessionMemoryService } from './ai-session-memory.service';
 import { AiSqlError } from './ai.errors';
-import { buildSqlAnswerMessages, buildSqlGenerationMessages } from './prompts';
 import { OpenAiCompatibleProvider } from './openai-compatible.provider';
+import { PromptService } from './prompt.service';
+import {
+  buildSqlAnswerVariables,
+  buildSqlGenerationVariables,
+} from './prompt-defaults.registry';
 import { SqlValidator } from './sql-validator';
 import { AiSqlUserContext } from './ai.types';
 
@@ -18,6 +22,8 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly provider: OpenAiCompatibleProvider,
+    private readonly sessionMemoryService: AiSessionMemoryService,
+    private readonly promptService: PromptService,
     private readonly sqlValidator: SqlValidator,
   ) {}
 
@@ -25,9 +31,16 @@ export class AiService {
     question: string,
     user: AiSqlUserContext,
     res: Response,
+    requestId: string,
+    inputSessionId?: string,
   ) {
-    const requestId = randomUUID();
     const startedAt = Date.now();
+    const sessionId = this.sessionMemoryService.resolveSessionId(inputSessionId);
+    const conversationHistoryText = await this.sessionMemoryService.getHistoryText({
+      feature: 'sql',
+      userId: user.sub,
+      sessionId,
+    });
     const sqlModel = this.getModelByPhase('OPENAI_SQL_MODEL');
     const answerModel = this.getModelByPhase('OPENAI_ANSWER_MODEL');
     const traceBase = {
@@ -41,6 +54,7 @@ export class AiService {
         ...traceBase,
         stage: 'request_started',
         question,
+        sessionId,
         sqlModel,
         answerModel,
       }),
@@ -49,20 +63,34 @@ export class AiService {
     this.writeEvent(res, 'meta', {
       type: 'meta',
       requestId,
+      sessionId,
       role: user.role,
       timestamp: new Date().toISOString(),
     });
 
     try {
+      this.writeEvent(res, 'loading', {
+        type: 'loading',
+        stage: 'generating_sql',
+        message: '正在理解问题并生成 SQL...',
+      });
+
       // 两段式链路：
       // 1. 先让模型把自然语言转成 SQL
       // 2. 查库后再让模型把结果组织成自然语言答案
       const sqlGenerationStartedAt = Date.now();
-      const rawSql = await this.provider.generateText({
-        messages: buildSqlGenerationMessages(question, {
+      const sqlGenerationPrompt = await this.promptService.resolvePrompt(
+        'sql_generation',
+        buildSqlGenerationVariables(question, {
           sub: user.sub,
           role: user.role,
-        }),
+        }, conversationHistoryText),
+      );
+      const rawSql = await this.provider.generateText({
+        messages: [
+          { role: 'system', content: sqlGenerationPrompt.systemPrompt },
+          { role: 'user', content: sqlGenerationPrompt.userPrompt },
+        ],
         model: sqlModel,
         temperature: 0.1,
       });
@@ -113,6 +141,12 @@ export class AiService {
         });
       }
 
+      this.writeEvent(res, 'loading', {
+        type: 'loading',
+        stage: 'executing_sql',
+        message: '正在执行查询并整理结果...',
+      });
+
       const queryStartedAt = Date.now();
       const rows = await this.executeQuery(normalizedSql);
       const queryDurationMs = Date.now() - queryStartedAt;
@@ -146,18 +180,42 @@ export class AiService {
       let firstDeltaAt: number | null = null;
       let answerChunkCount = 0;
       let answerCharCount = 0;
+      let answerText = '';
+      let thinkingStarted = false;
+      let thinkingFinished = false;
+      const sqlAnswerPrompt = await this.promptService.resolvePrompt(
+        'sql_answer',
+        buildSqlAnswerVariables({
+          question,
+          role: user.role,
+          rows: serializableRows,
+          conversationHistoryText,
+        }),
+      );
+
+      this.writeEvent(res, 'loading', {
+        type: 'loading',
+        stage: 'generating_answer',
+        message: '正在生成自然语言回答...',
+      });
 
       await this.provider.streamText(
         {
-          messages: buildSqlAnswerMessages({
-            question,
-            role: user.role,
-            rows: serializableRows,
-          }),
+          messages: [
+            { role: 'system', content: sqlAnswerPrompt.systemPrompt },
+            { role: 'user', content: sqlAnswerPrompt.userPrompt },
+          ],
           model: answerModel,
           temperature: 0.3,
         },
         (delta) => {
+          if (thinkingStarted && !thinkingFinished) {
+            thinkingFinished = true;
+            this.writeEvent(res, 'thinking_done', {
+              type: 'thinking_done',
+            });
+          }
+
           if (firstDeltaAt === null) {
             firstDeltaAt = Date.now();
             this.logger.log(
@@ -171,12 +229,30 @@ export class AiService {
 
           answerChunkCount += 1;
           answerCharCount += delta.length;
+          answerText += delta;
           this.writeEvent(res, 'answer_delta', {
             type: 'answer_delta',
             delta,
           });
         },
+        (thinkingDelta) => {
+          if (!thinkingDelta) {
+            return;
+          }
+
+          thinkingStarted = true;
+          this.writeEvent(res, 'thinking_delta', {
+            type: 'thinking_delta',
+            delta: thinkingDelta,
+          });
+        },
       );
+
+      if (thinkingStarted && !thinkingFinished) {
+        this.writeEvent(res, 'thinking_done', {
+          type: 'thinking_done',
+        });
+      }
       const answerDurationMs = Date.now() - answerStartedAt;
 
       this.logger.log(
@@ -202,11 +278,32 @@ export class AiService {
         truncated,
       });
 
+      await this.persistAiSqlLog({
+        userId: user.sub,
+        requestId,
+        question,
+        answer: answerText,
+        sql: normalizedSql,
+        rowCount: serializableRows.length,
+        durationMs: Date.now() - startedAt,
+        success: true,
+      });
+      await this.sessionMemoryService.appendTurn(
+        {
+          feature: 'sql',
+          userId: user.sub,
+          sessionId,
+        },
+        question,
+        answerText,
+      );
+
       this.logger.log(
         JSON.stringify({
           ...traceBase,
           stage: 'request_completed',
           question,
+          sessionId,
           sqlModel,
           answerModel,
           sql: normalizedSql,
@@ -224,6 +321,17 @@ export class AiService {
       );
     } catch (error) {
       const aiError = this.toAiError(error);
+      await this.persistAiSqlLog({
+        userId: user.sub,
+        requestId,
+        question,
+        answer: null,
+        sql: null,
+        rowCount: 0,
+        durationMs: Date.now() - startedAt,
+        success: false,
+        errorMessage: aiError.message,
+      });
       this.writeEvent(res, 'error', {
         type: 'error',
         code: aiError.code,
@@ -235,6 +343,7 @@ export class AiService {
           ...traceBase,
           stage: 'request_failed',
           question,
+          sessionId,
           sqlModel,
           answerModel,
           code: aiError.code,
@@ -392,5 +501,36 @@ export class AiService {
     }
 
     return new AiSqlError('AI_SQL_STREAM_FAILED', '流式回答失败，请稍后重试');
+  }
+
+  /**
+   * 写日志失败不应该覆盖主流程错误。
+   *
+   * 日志是可观测性数据，价值很高，但不能反向把用户请求变成更隐蔽的二次异常。
+   */
+  private async persistAiSqlLog(data: {
+    userId: string;
+    requestId: string;
+    question: string;
+    answer: string | null;
+    sql: string | null;
+    rowCount: number;
+    durationMs: number;
+    success: boolean;
+    errorMessage?: string;
+  }) {
+    try {
+      await this.prisma.aiSqlLog.create({
+        data,
+      });
+    } catch (logError) {
+      this.logger.error(
+        JSON.stringify({
+          requestId: data.requestId,
+          stage: 'ai_sql_log_persist_failed',
+          message: logError instanceof Error ? logError.message : String(logError),
+        }),
+      );
+    }
   }
 }

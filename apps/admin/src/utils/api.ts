@@ -21,6 +21,19 @@ const API_BASE_URL = '/api';
 let refreshPromise: Promise<string | null> | null = null;
 
 /**
+ * 生成链路 requestId
+ *
+ * 每次请求都带上 X-Request-Id，方便和后端日志、SSE meta 中的 requestId 对齐。
+ */
+function createRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `req_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+/**
  * API 客户端类
  *
  * 封装 fetch 请求，提供统一的认证和错误处理
@@ -123,6 +136,7 @@ export class ApiClient {
     endpoint: string,
     body: unknown,
     onEvent: (event: T) => void,
+    signal?: AbortSignal,
   ) {
     const response = await this.authorizedFetch(
       endpoint,
@@ -132,6 +146,7 @@ export class ApiClient {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal,
       },
       true,
     );
@@ -175,9 +190,12 @@ export class ApiClient {
 
   private async authorizedFetch(endpoint: string, options?: RequestInit, allowRetry = true) {
     const token = this.getToken();
+    const requestId =
+      (options?.headers as Record<string, string> | undefined)?.['X-Request-Id'] || createRequestId();
     const headers: HeadersInit = {
       ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options?.headers || {}),
+      'X-Request-Id': requestId,
       ...(token && { Authorization: `Bearer ${token}` }),
     };
 
@@ -198,6 +216,7 @@ export class ApiClient {
     const retryHeaders: HeadersInit = {
       ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options?.headers || {}),
+      'X-Request-Id': requestId,
       Authorization: `Bearer ${refreshedToken}`,
     };
 

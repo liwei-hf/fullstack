@@ -10,6 +10,7 @@ import type {
   KnowledgeBaseItem,
 } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { KnowledgeBaseCacheService } from './knowledge-base-cache.service';
 import { fromPersistenceChunkStrategy } from './knowledge-base-chunk-strategy.util';
 import { normalizeDocumentFileName } from './knowledge-base-file-name.util';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
@@ -21,7 +22,10 @@ import type { AuthenticatedRequestUser } from './knowledge-base.types';
  */
 @Injectable()
 export class KnowledgeBaseService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cacheService: KnowledgeBaseCacheService,
+  ) {}
 
   // 创建知识库时先校验重名，避免后续上传文档时出现归属混乱。
   async createKnowledgeBase(
@@ -51,6 +55,8 @@ export class KnowledgeBaseService {
       },
     });
 
+    await this.cacheService.invalidateKnowledgeBaseList();
+
     return {
       id: knowledgeBase.id,
       name: knowledgeBase.name,
@@ -68,6 +74,11 @@ export class KnowledgeBaseService {
 
   // 列表页主要关注数量和状态聚合，因此这里直接在 service 里做轻量映射。
   async listKnowledgeBases(): Promise<KnowledgeBaseItem[]> {
+    const cached = await this.cacheService.getKnowledgeBaseList();
+    if (cached) {
+      return cached;
+    }
+
     const items = await this.prisma.knowledgeBase.findMany({
       orderBy: { updatedAt: 'desc' },
       include: {
@@ -77,7 +88,7 @@ export class KnowledgeBaseService {
       },
     });
 
-    return items.map((item) => {
+    const mapped = items.map((item) => {
       const readyDocumentCount = item.documents.filter((document) => document.status === 'READY').length;
       return {
         id: item.id,
@@ -89,10 +100,18 @@ export class KnowledgeBaseService {
         updatedAt: item.updatedAt.toISOString(),
       };
     });
+
+    await this.cacheService.setKnowledgeBaseList(mapped);
+    return mapped;
   }
 
   // 详情页用于展示单个知识库的基础信息和可用文档数。
   async getKnowledgeBase(id: string): Promise<KnowledgeBaseDetail> {
+    const cached = await this.cacheService.getKnowledgeBaseDetail(id);
+    if (cached) {
+      return cached;
+    }
+
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
       include: {
@@ -107,7 +126,7 @@ export class KnowledgeBaseService {
       throw new NotFoundException('知识库不存在');
     }
 
-    return {
+    const detail = {
       id: knowledgeBase.id,
       name: knowledgeBase.name,
       description: knowledgeBase.description,
@@ -120,6 +139,9 @@ export class KnowledgeBaseService {
         username: knowledgeBase.createdBy.username,
       },
     };
+
+    await this.cacheService.setKnowledgeBaseDetail(id, detail);
+    return detail;
   }
 
   // 当前版本只允许删除空知识库，避免把对象存储和向量清理耦合进一次删除里。
@@ -148,14 +170,24 @@ export class KnowledgeBaseService {
         where: { knowledgeBaseId: id },
       });
 
+      await tx.knowledgeBaseImportJob.deleteMany({
+        where: { knowledgeBaseId: id },
+      });
+
       await tx.knowledgeBase.delete({ where: { id } });
     });
+    await this.cacheService.invalidateKnowledgeBase(id);
 
     return { success: true };
   }
 
   // 文档列表会把持久化层的枚举转换成前端更友好的共享契约枚举。
   async listDocuments(knowledgeBaseId: string): Promise<KnowledgeBaseDocumentItem[]> {
+    const cached = await this.cacheService.getKnowledgeBaseDocuments(knowledgeBaseId);
+    if (cached) {
+      return cached;
+    }
+
     await this.ensureKnowledgeBaseExists(knowledgeBaseId);
     const documents = await this.prisma.document.findMany({
       where: { knowledgeBaseId },
@@ -165,9 +197,10 @@ export class KnowledgeBaseService {
       },
     });
 
-    return documents.map((document) => ({
+    const mapped = documents.map((document) => ({
       id: document.id,
       knowledgeBaseId: document.knowledgeBaseId,
+      importJobId: document.importJobId,
       fileName: normalizeDocumentFileName(document.fileName),
       fileType: document.fileType,
       chunkStrategy: fromPersistenceChunkStrategy(document.chunkStrategy),
@@ -183,6 +216,9 @@ export class KnowledgeBaseService {
         username: document.uploadedBy.username,
       },
     }));
+
+    await this.cacheService.setKnowledgeBaseDocuments(knowledgeBaseId, mapped);
+    return mapped;
   }
 
   // 问答前先用这个方法快速判断知识库里是否存在 READY 文档。

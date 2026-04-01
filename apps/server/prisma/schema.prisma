@@ -74,6 +74,22 @@ enum DocumentChunkStrategy {
   HEADING
 }
 
+// ZIP 批量导入任务状态
+enum KnowledgeBaseImportJobStatus {
+  UPLOADED
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIAL_SUCCESS
+}
+
+// Prompt 版本状态
+enum PromptVersionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
 // 部门枚举（用于用户所属部门）
 enum DepartmentName {
   ENGINEERING  // 研发部
@@ -108,6 +124,10 @@ model User {
   createdKnowledgeBases KnowledgeBase[] @relation("KnowledgeBaseCreator")
   uploadedDocuments Document[]        @relation("DocumentUploader")
   qaLogs        QaLog[]
+  aiSqlLogs     AiSqlLog[]
+  promptVersions PromptVersion[] @relation("PromptVersionCreator")
+  promptTestLogs PromptTestLog[]
+  importJobs    KnowledgeBaseImportJob[] @relation("KnowledgeBaseImportUploader")
   department    Department?  @relation(fields: [departmentId], references: [id]) // 关联部门
 
   // 索引优化查询性能
@@ -175,6 +195,7 @@ model KnowledgeBase {
   createdBy     User       @relation("KnowledgeBaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
   documents     Document[]
   qaLogs        QaLog[]
+  importJobs    KnowledgeBaseImportJob[]
 
   @@index([createdById])
   @@index([createdAt])
@@ -184,6 +205,7 @@ model Document {
   id              String         @id @default(cuid())
   knowledgeBaseId String
   uploadedById    String
+  importJobId     String?
   fileName        String
   fileType        String
   chunkStrategy   DocumentChunkStrategy @default(FIXED)
@@ -196,7 +218,33 @@ model Document {
   updatedAt       DateTime       @updatedAt
   knowledgeBase   KnowledgeBase  @relation(fields: [knowledgeBaseId], references: [id], onDelete: Restrict)
   uploadedBy      User           @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  importJob       KnowledgeBaseImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
   chunks          DocumentChunk[]
+
+  @@index([knowledgeBaseId])
+  @@index([uploadedById])
+  @@index([importJobId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model KnowledgeBaseImportJob {
+  id               String                     @id @default(cuid())
+  knowledgeBaseId  String
+  uploadedById     String
+  fileName         String
+  objectKey        String                     @unique
+  chunkStrategy    DocumentChunkStrategy      @default(FIXED)
+  status           KnowledgeBaseImportJobStatus @default(UPLOADED)
+  totalFileCount   Int                        @default(0)
+  successFileCount Int                        @default(0)
+  failedFileCount  Int                        @default(0)
+  failureReason    String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  knowledgeBase    KnowledgeBase              @relation(fields: [knowledgeBaseId], references: [id], onDelete: Restrict)
+  uploadedBy       User                       @relation("KnowledgeBaseImportUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  documents        Document[]
 
   @@index([knowledgeBaseId])
   @@index([uploadedById])
@@ -223,14 +271,94 @@ model QaLog {
   id              String        @id @default(cuid())
   knowledgeBaseId String
   userId          String
+  requestId       String?
   question        String
   answer          String?
   sourceCount     Int           @default(0)
+  durationMs      Int?
+  success         Boolean       @default(true)
+  errorMessage    String?
   createdAt       DateTime      @default(now())
   knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Restrict)
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([knowledgeBaseId])
   @@index([userId])
+  @@index([requestId])
+  @@index([createdAt])
+}
+
+model AiSqlLog {
+  id           String   @id @default(cuid())
+  userId       String
+  requestId    String?
+  question     String
+  answer       String?
+  sql          String?
+  rowCount     Int      @default(0)
+  durationMs   Int?
+  success      Boolean  @default(true)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([requestId])
+  @@index([createdAt])
+}
+
+model PromptTemplate {
+  id          String          @id @default(cuid())
+  code        String          @unique
+  name        String
+  description String?
+  scene       String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  versions    PromptVersion[]
+
+  @@index([scene])
+  @@index([createdAt])
+}
+
+model PromptVersion {
+  id                 String              @id @default(cuid())
+  templateId         String
+  version            Int
+  systemPrompt       String
+  userPromptTemplate String
+  variablesSchema    Json?
+  status             PromptVersionStatus @default(DRAFT)
+  createdById        String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  template           PromptTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy          User                @relation("PromptVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  testLogs           PromptTestLog[]
+
+  @@unique([templateId, version])
+  @@index([templateId, status])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model PromptTestLog {
+  id              String         @id @default(cuid())
+  templateCode    String
+  promptVersionId String?
+  input           Json
+  resolvedPrompt  Json
+  output          String?
+  durationMs      Int?
+  success         Boolean        @default(false)
+  errorMessage    String?
+  createdById     String
+  createdAt       DateTime       @default(now())
+  promptVersion   PromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+  createdBy       User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([templateCode])
+  @@index([promptVersionId])
+  @@index([createdById])
   @@index([createdAt])
 }

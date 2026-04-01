@@ -33,3 +33,21 @@ export const RAG_SOURCE_SNIPPET_MAX_CHARS = 220;
 export const RAG_UPLOAD_MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 export const SUPPORTED_DOCUMENT_EXTENSIONS = ['.pdf', '.md', '.markdown', '.txt', '.docx'];
+export const SUPPORTED_ZIP_EXTENSION = '.zip';
+
+// ZIP 导入时统一忽略这些明显噪音目录，避免把源码仓库里的无关内容灌进知识库。
+export const KNOWLEDGE_BASE_IMPORT_IGNORED_DIRECTORIES = [
+  'node_modules',
+  '.git',
+  '.github',
+  '.claude',
+  'dist',
+  'build',
+  'coverage',
+  'public',
+  'assets',
+  'scripts',
+  '.vitepress',
+  'eslint-local-rules',
+  '__MACOSX',
+] as const;

@@ -3,5 +3,14 @@ export {
   buildCommonChineseAnswerRules,
   buildCommonInsufficientInfoRules,
 } from './common.prompts';
-export { buildKnowledgeBaseAnswerPrompt } from './knowledge-base.prompts';
-export { buildSqlAnswerMessages, buildSqlGenerationMessages } from './sql.prompts';
+export {
+  KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE,
+  buildKnowledgeBaseAnswerVariables,
+} from './knowledge-base.prompts';
+export {
+  SQL_ANSWER_DEFAULT_TEMPLATE,
+  SQL_GENERATION_DEFAULT_TEMPLATE,
+  SQL_SCHEMA_DESCRIPTION,
+  buildSqlAnswerVariables,
+  buildSqlGenerationVariables,
+} from './sql.prompts';

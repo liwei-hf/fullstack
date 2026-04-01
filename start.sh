@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # =============================================================================
-# 一键启动脚本 - Fullstack Interview Project
+# 初始化启动脚本 - Fullstack Interview Project
 # =============================================================================
 # 当前脚本对应最新项目结构：
 # 1. apps/server   -> NestJS 后端（默认 3334）
 # 2. apps/admin    -> React 管理端（默认 3335）
 # 3. apps/mobile   -> uni-app H5（默认 3336）
-# 4. RAG 基础设施 -> PostgreSQL + pgvector、MinIO
+# 4. RAG 基础设施 -> PostgreSQL + pgvector、MinIO、Redis
 # =============================================================================
 
 set -e
@@ -23,6 +23,7 @@ ADMIN_PORT=3335
 MOBILE_PORT=3336
 MINIO_API_PORT=9000
 MINIO_CONSOLE_PORT=9001
+REDIS_PORT=6379
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -49,7 +50,7 @@ free_port() {
 }
 
 echo -e "${BLUE}============================================${NC}"
-echo -e "${BLUE}   Fullstack Interview Project - 启动脚本${NC}"
+echo -e "${BLUE}   Fullstack Interview Project - 初始化脚本${NC}"
 echo -e "${BLUE}============================================${NC}"
 echo ""
 
@@ -117,8 +118,10 @@ echo -e "  ${BLUE}管理端:${NC}          http://localhost:${ADMIN_PORT}"
 echo -e "  ${BLUE}手机端 H5:${NC}       http://localhost:${MOBILE_PORT}"
 echo -e "  ${BLUE}MinIO API:${NC}       http://localhost:${MINIO_API_PORT}"
 echo -e "  ${BLUE}MinIO Console:${NC}   http://localhost:${MINIO_CONSOLE_PORT}"
+echo -e "  ${BLUE}Redis:${NC}           redis://localhost:${REDIS_PORT}"
 echo ""
-echo -e "  ${YELLOW}说明：${NC}本脚本只启动前后端开发服务。PostgreSQL/MinIO 请先确保已启动。"
+echo -e "  ${YELLOW}说明：${NC}本脚本适合首次初始化，会执行 Prisma 同步和种子数据播入。"
+echo -e "  ${YELLOW}日常开发：${NC}建议改用 ./dev.sh，避免反复执行 db push / seed。"
 echo -e "  ${YELLOW}默认账号：${NC}admin / Admin123456!"
 echo -e "  ${YELLOW}按 Ctrl+C 可以停止当前脚本拉起的开发服务${NC}"
 echo ""

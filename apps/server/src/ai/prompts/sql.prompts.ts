@@ -1,11 +1,21 @@
-import { ChatMessage } from '../ai.types';
+import type { PromptScene, PromptTemplateCode } from '@fullstack/shared';
 import {
   buildCommonChineseAnswerRules,
   buildCommonInsufficientInfoRules,
 } from './common.prompts';
 
+export interface DefaultPromptTemplateDefinition {
+  code: PromptTemplateCode;
+  name: string;
+  description: string;
+  scene: PromptScene;
+  systemPrompt: string;
+  userPromptTemplate: string;
+  variablesSchema: Record<string, unknown> | null;
+}
+
 // 把当前可查询的 schema 明确写进 prompt，是 NL2SQL 准确率和可控性的基础。
-const SQL_SCHEMA_DESCRIPTION = `
+export const SQL_SCHEMA_DESCRIPTION = `
 数据库使用 PostgreSQL，表名和字段名区分大小写，必须使用双引号。
 
 表："User"
@@ -43,15 +53,16 @@ const SQL_SCHEMA_DESCRIPTION = `
 `;
 
 /**
- * SQL 生成 prompt
+ * 构造 SQL 生成阶段的动态变量
  *
- * 这里专门负责“自然语言 -> SQL”的提示词构造，
- * 让 service 只做编排，不再同时承担 prompt 维护职责。
+ * 这些变量会注入到 prompt 模板中，让 Prompt 版本可以修改文案，
+ * 但 schema、当前用户约束和角色规则仍然由服务端安全地动态生成。
  */
-export function buildSqlGenerationMessages(
+export function buildSqlGenerationVariables(
   question: string,
   user: { sub: string; role: 'admin' | 'user' },
-): ChatMessage[] {
+  conversationHistoryText = '',
+): Record<string, unknown> {
   const currentUserRules = `
 当前登录用户信息：
 - 当前登录用户的真实 "User"."id" = '${user.sub}'
@@ -86,48 +97,80 @@ export function buildSqlGenerationMessages(
 4. 不允许 SELECT *
 `;
 
-  return [
-    {
-      role: 'system',
-      content: `
+  const sqlGenerationExamples = `
+示例：
+- 问题：我在哪个部门
+  SQL：SELECT "Department"."name" FROM "User" INNER JOIN "Department" ON "User"."departmentId" = "Department"."id" WHERE "User"."id" = '${user.sub}' LIMIT 50
+- 问题：我的待办里还有多少进行中的任务
+  SQL：SELECT COUNT(*) FROM "Todo" WHERE "Todo"."userId" = '${user.sub}' AND "Todo"."status" = 'IN_PROGRESS' LIMIT 50
+`.trim();
+
+  return {
+    question,
+    conversationHistoryText,
+    currentUserRules,
+    roleRules,
+    sqlSchemaDescription: SQL_SCHEMA_DESCRIPTION.trim(),
+    sqlGenerationExamples,
+  };
+}
+
+export const SQL_GENERATION_DEFAULT_TEMPLATE: DefaultPromptTemplateDefinition = {
+  code: 'sql_generation',
+  name: '智能问数 - SQL 生成',
+  description: '把自然语言问题转换成安全可控的 PostgreSQL SELECT 语句。',
+  scene: 'nl2sql',
+  systemPrompt: `
 你是一个将中文自然语言转换成 PostgreSQL 查询语句的助手。
 你必须严格输出一条且仅一条 SQL SELECT 语句。
 不要输出 Markdown、不要输出解释、不要输出前后缀。
 不要使用分号，不要使用注释，不要使用写操作。
 默认最多返回 50 行。
 当用户提到“待办 / 进行中 / 已完成 / 完成了”等任务状态语义时，必须映射到 "Todo"."status" 的真实枚举值：'TODO'、'IN_PROGRESS'、'DONE'。
-${currentUserRules}
+最近对话上下文（如果有）只用于理解“那这个 / 继续 / 上一个结果”这类追问，不代表已经执行过新的 SQL：
+{{conversationHistoryText}}
+{{currentUserRules}}
 
-示例：
-- 问题：我在哪个部门
-  SQL：SELECT "Department"."name" FROM "User" INNER JOIN "Department" ON "User"."departmentId" = "Department"."id" WHERE "User"."id" = '${user.sub}' LIMIT 50
-- 问题：我的待办里还有多少进行中的任务
-  SQL：SELECT COUNT(*) FROM "Todo" WHERE "Todo"."userId" = '${user.sub}' AND "Todo"."status" = 'IN_PROGRESS' LIMIT 50
-${SQL_SCHEMA_DESCRIPTION}
-${roleRules}
+{{sqlGenerationExamples}}
+{{sqlSchemaDescription}}
+{{roleRules}}
 `.trim(),
-    },
-    {
-      role: 'user',
-      content: question,
-    },
-  ];
-}
+  userPromptTemplate: `{{question}}`,
+  variablesSchema: {
+    question: 'string',
+    conversationHistoryText: 'string',
+    currentUserRules: 'string',
+    roleRules: 'string',
+    sqlSchemaDescription: 'string',
+    sqlGenerationExamples: 'string',
+  },
+};
 
 /**
- * SQL 结果解释 prompt
+ * 构造 SQL 结果解释阶段的动态变量
  *
  * 第二次模型调用不再关心 SQL，只负责把结构化查询结果转成用户可读的中文答案。
  */
-export function buildSqlAnswerMessages(input: {
+export function buildSqlAnswerVariables(input: {
   question: string;
   role: 'admin' | 'user';
   rows: Record<string, unknown>[];
-}): ChatMessage[] {
-  return [
-    {
-      role: 'system',
-      content: `
+  conversationHistoryText?: string;
+}) {
+  return {
+    question: input.question,
+    role: input.role,
+    rowsJson: JSON.stringify(input.rows),
+    conversationHistoryText: input.conversationHistoryText ?? '',
+  };
+}
+
+export const SQL_ANSWER_DEFAULT_TEMPLATE: DefaultPromptTemplateDefinition = {
+  code: 'sql_answer',
+  name: '智能问数 - 结果解释',
+  description: '把 SQL 查询结果整理成用户可读的中文答案。',
+  scene: 'nl2sql',
+  systemPrompt: `
 你是一个中文数据分析助手。
 你的任务是基于 SQL 查询结果，直接用简洁自然语言回答用户问题。
 回答要求：
@@ -136,15 +179,18 @@ export function buildSqlAnswerMessages(input: {
 ${buildCommonChineseAnswerRules()}
 ${buildCommonInsufficientInfoRules()}
 `.trim(),
-    },
-    {
-      role: 'user',
-      content: `
-用户角色：${input.role}
-用户问题：${input.question}
+  userPromptTemplate: `
+用户角色：{{role}}
+用户问题：{{question}}
+最近对话上下文：
+{{conversationHistoryText}}
 查询结果 JSON：
-${JSON.stringify(input.rows)}
+{{rowsJson}}
 `.trim(),
-    },
-  ];
-}
+  variablesSchema: {
+    question: 'string',
+    role: 'string',
+    rowsJson: 'string',
+    conversationHistoryText: 'string',
+  },
+};

@@ -20,6 +20,7 @@ import { TodosModule } from './todos/todos.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { AiModule } from './ai/ai.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
     AuthModule,         // 认证模块
     TodosModule,        // 任务管理模块
     DepartmentsModule,  // 部门管理模块
+    RedisModule,        // Redis 缓存、队列和短期记忆基础设施
     AiModule,           // AI 查询模块
     KnowledgeBaseModule, // 文档知识库与 RAG 模块
   ],

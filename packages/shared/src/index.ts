@@ -225,6 +225,29 @@ export type {
   AiSqlSseEvent,
 } from './ai';
 
+export type {
+  AiConversationKind,
+  AiConversationRole,
+  AiConversationMessageStatus,
+  AiConversationMessage,
+  AiConversationSession,
+} from './ai-conversation';
+
+export {
+  AI_CONVERSATION_KINDS,
+  AI_CONVERSATION_ROLES,
+  AI_CONVERSATION_MESSAGE_STATUSES,
+} from './ai-conversation';
+
+export type {
+  AiLogType,
+  AiLogItem,
+} from './ai-log';
+
+export {
+  AI_LOG_TYPES,
+} from './ai-log';
+
 // ==================== 导出知识库/RAG 类型 ====================
 
 export type {
@@ -233,8 +256,11 @@ export type {
   KnowledgeBaseItem,
   KnowledgeBaseDetail,
   KnowledgeBaseDocumentItem,
+  KnowledgeBaseImportJobStatus,
+  KnowledgeBaseImportJobItem,
   CreateKnowledgeBaseRequest,
   UploadKnowledgeBaseDocumentRequest,
+  ImportKnowledgeBaseZipRequest,
   RagChatStreamRequest,
   RagSourceItem,
   RagSseEvent,
@@ -243,4 +269,27 @@ export type {
 export {
   KNOWLEDGE_BASE_STATUSES,
   KNOWLEDGE_BASE_CHUNK_STRATEGIES,
+  KNOWLEDGE_BASE_IMPORT_JOB_STATUSES,
 } from './rag';
+
+// ==================== 导出 Prompt 管理类型 ====================
+
+export type {
+  PromptTemplateCode,
+  PromptScene,
+  PromptVersionStatus,
+  PromptTemplateListItem,
+  PromptTemplateDetail,
+  PromptVersionItem,
+  CreatePromptVersionRequest,
+  UpdatePromptVersionRequest,
+  PromptTestRequest,
+  PromptTestResult,
+  PromptTestLogItem,
+} from './prompt';
+
+export {
+  PROMPT_TEMPLATE_CODES,
+  PROMPT_SCENES,
+  PROMPT_VERSION_STATUSES,
+} from './prompt';

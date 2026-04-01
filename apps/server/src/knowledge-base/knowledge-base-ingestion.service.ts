@@ -8,6 +8,7 @@ import {
 } from './knowledge-base.constants';
 import { fromPersistenceChunkStrategy } from './knowledge-base-chunk-strategy.util';
 import { KnowledgeBaseParserService } from './knowledge-base-parser.service';
+import { KnowledgeBaseCacheService } from './knowledge-base-cache.service';
 import { KnowledgeBaseRetrievalService } from './knowledge-base-retrieval.service';
 import { KnowledgeBaseStorageService } from './knowledge-base-storage.service';
 
@@ -19,6 +20,7 @@ export class KnowledgeBaseIngestionService {
     private readonly prisma: PrismaService,
     private readonly storageService: KnowledgeBaseStorageService,
     private readonly parserService: KnowledgeBaseParserService,
+    private readonly cacheService: KnowledgeBaseCacheService,
     private readonly retrievalService: KnowledgeBaseRetrievalService,
   ) {}
 
@@ -26,7 +28,13 @@ export class KnowledgeBaseIngestionService {
    * 上传接口只负责接收文件和建立文档记录，
    * 实际的解析、切片和向量化放到后台异步执行，避免阻塞上传请求。
    */
-  async processDocument(documentId: string) {
+  async processDocument(
+    documentId: string,
+    options?: {
+      rethrowOnFailure?: boolean;
+    },
+  ) {
+    let knowledgeBaseId: string | null = null;
     try {
       await this.prisma.document.update({
         where: { id: documentId },
@@ -43,6 +51,7 @@ export class KnowledgeBaseIngestionService {
       if (!document) {
         return;
       }
+      knowledgeBaseId = document.knowledgeBaseId;
 
       const fileBuffer = await this.storageService.getObjectBuffer(document.objectKey);
       const parsed = await this.parserService.parseDocument({
@@ -107,17 +116,24 @@ export class KnowledgeBaseIngestionService {
           failureReason: null,
         },
       });
+      await this.cacheService.invalidateKnowledgeBase(document.knowledgeBaseId);
     } catch (error) {
       this.logger.error(
         `文档处理失败: ${error instanceof Error ? error.message : String(error)}`,
       );
-      await this.prisma.document.update({
+      await this.prisma.document.updateMany({
         where: { id: documentId },
         data: {
           status: 'FAILED',
           failureReason: error instanceof Error ? error.message : '文档处理失败',
         },
       });
+      if (knowledgeBaseId) {
+        await this.cacheService.invalidateKnowledgeBase(knowledgeBaseId);
+      }
+      if (options?.rethrowOnFailure) {
+        throw error;
+      }
     }
   }
 

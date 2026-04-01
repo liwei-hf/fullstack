@@ -42,7 +42,11 @@ export class OpenAiCompatibleProvider {
     return content;
   }
 
-  async streamText(options: CompletionOptions, onDelta: (delta: string) => void) {
+  async streamText(
+    options: CompletionOptions,
+    onDelta: (delta: string) => void,
+    onThinkingDelta?: (delta: string) => void,
+  ) {
     // 第二阶段用于“查询结果 -> 自然语言答案”，这里走流式，把答案边生成边回给前端。
     const response = await fetch(this.getEndpoint(), {
       method: 'POST',
@@ -86,16 +90,73 @@ export class OpenAiCompatibleProvider {
           }
 
           const parsed = JSON.parse(data) as {
-            choices?: Array<{ delta?: { content?: string } }>;
+            choices?: Array<{
+              delta?: {
+                content?: string;
+                reasoning_content?: string;
+                reasoning?: string | { text?: string } | Array<string | { text?: string }>;
+                thinking?: string | { text?: string } | Array<string | { text?: string }>;
+              };
+            }>;
           };
 
-          const delta = parsed.choices?.[0]?.delta?.content;
+          const choiceDelta = parsed.choices?.[0]?.delta;
+          const thinkingDelta = this.extractThinkingDelta(choiceDelta);
+          if (thinkingDelta) {
+            onThinkingDelta?.(thinkingDelta);
+          }
+
+          const delta = choiceDelta?.content;
           if (delta) {
             onDelta(delta);
           }
         }
       }
     }
+  }
+
+  /**
+   * 兼容不同 OpenAI 风格供应商对“思考过程”字段的命名差异。
+   *
+   * 常见返回可能是：
+   * - reasoning_content
+   * - reasoning
+   * - thinking
+   */
+  private extractThinkingDelta(delta: {
+    reasoning_content?: string;
+    reasoning?: string | { text?: string } | Array<string | { text?: string }>;
+    thinking?: string | { text?: string } | Array<string | { text?: string }>;
+  } | undefined) {
+    if (!delta) {
+      return '';
+    }
+
+    return (
+      delta.reasoning_content ||
+      this.normalizeThinkingPart(delta.reasoning) ||
+      this.normalizeThinkingPart(delta.thinking)
+    );
+  }
+
+  private normalizeThinkingPart(
+    value: string | { text?: string } | Array<string | { text?: string }> | undefined,
+  ) {
+    if (!value) {
+      return '';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => (typeof item === 'string' ? item : item.text || ''))
+        .join('');
+    }
+
+    return value.text || '';
   }
 
   private getHeaders() {

@@ -5,20 +5,24 @@ import {
   Get,
   Param,
   Post,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user';
+import { resolveRequestId } from '../common/utils/request-id.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RAG_UPLOAD_MAX_FILE_SIZE } from './knowledge-base.constants';
 import { KnowledgeBaseChatService } from './knowledge-base-chat.service';
 import { KnowledgeBaseDocumentService } from './knowledge-base-document.service';
+import { KnowledgeBaseImportService } from './knowledge-base-import.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
+import { ImportZipDto } from './dto/import-zip.dto';
 import { RagChatStreamDto } from './dto/rag-chat-stream.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
@@ -35,6 +39,7 @@ export class KnowledgeBaseController {
   constructor(
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly knowledgeBaseDocumentService: KnowledgeBaseDocumentService,
+    private readonly knowledgeBaseImportService: KnowledgeBaseImportService,
     private readonly knowledgeBaseChatService: KnowledgeBaseChatService,
   ) {}
 
@@ -101,6 +106,31 @@ export class KnowledgeBaseController {
     };
   }
 
+  // ZIP 批量导入会在后台逐文件创建 Document，并复用现有 ingestion 流程。
+  @Post(':id/import-zip')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: RAG_UPLOAD_MAX_FILE_SIZE,
+      },
+    }),
+  )
+  async importZip(
+    @Param('id') id: string,
+    @UploadedFile() file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      buffer: Buffer;
+    } | undefined,
+    @Body() dto: ImportZipDto,
+    @CurrentUser() user: AuthenticatedRequestUser,
+  ) {
+    return {
+      data: await this.knowledgeBaseImportService.uploadZip(id, file, user, dto.chunkStrategy),
+    };
+  }
+
   // 获取当前知识库下的文档列表和处理状态。
   @Get(':id/documents')
   async listDocuments(@Param('id') id: string) {
@@ -126,15 +156,26 @@ export class KnowledgeBaseController {
     @Param('id') id: string,
     @Body() dto: RagChatStreamDto,
     @CurrentUser() user: AuthenticatedRequestUser,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
+    const requestId = resolveRequestId(req.headers);
+
     // SSE 响应头需要在开始写流之前就设置好，避免浏览器按普通 JSON 处理。
+    res.setHeader('X-Request-Id', requestId);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    await this.knowledgeBaseChatService.streamAnswer(id, dto.question, user, res);
+    await this.knowledgeBaseChatService.streamAnswer(
+      id,
+      dto.question,
+      user,
+      res,
+      requestId,
+      dto.sessionId,
+    );
   }
 }

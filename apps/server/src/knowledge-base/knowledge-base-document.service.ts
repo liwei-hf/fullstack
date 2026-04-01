@@ -16,6 +16,8 @@ import {
 } from './knowledge-base-chunk-strategy.util';
 import { normalizeDocumentFileName } from './knowledge-base-file-name.util';
 import { KnowledgeBaseIngestionService } from './knowledge-base-ingestion.service';
+import { KnowledgeBaseCacheService } from './knowledge-base-cache.service';
+import { KnowledgeBaseQueueService } from './knowledge-base-queue.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { KnowledgeBaseStorageService } from './knowledge-base-storage.service';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
@@ -31,6 +33,8 @@ export class KnowledgeBaseDocumentService {
     private readonly prisma: PrismaService,
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly storageService: KnowledgeBaseStorageService,
+    private readonly cacheService: KnowledgeBaseCacheService,
+    private readonly queueService: KnowledgeBaseQueueService,
     private readonly ingestionService: KnowledgeBaseIngestionService,
   ) {}
 
@@ -84,8 +88,14 @@ export class KnowledgeBaseDocumentService {
       },
     });
 
-    // 上传接口不等待处理结束，避免大文件解析和 embedding 拖慢接口响应。
-    void this.ingestionService.processDocument(document.id);
+    await this.cacheService.invalidateKnowledgeBase(knowledgeBaseId);
+
+    // 优先把处理任务投递到 BullMQ。
+    // 如果当前环境还没启 Redis，则自动回退到应用内异步执行，保证开发阶段也能继续联调。
+    const queued = await this.queueService.enqueueDocumentIngestion(document.id);
+    if (!queued) {
+      void this.ingestionService.processDocument(document.id);
+    }
 
     return {
       id: document.id,
@@ -138,6 +148,7 @@ export class KnowledgeBaseDocumentService {
           where: { id: documentId },
         });
       });
+      await this.cacheService.invalidateKnowledgeBase(document.knowledgeBaseId);
 
       return { success: true };
     } catch (error) {

@@ -1,32 +1,41 @@
 <template>
-  <div class="index-container">
-    <div class="header">
-      <h1 class="title">移动端首页</h1>
-      <p class="subtitle">登录成功，开始体验自然语言查数</p>
-    </div>
+  <div class="home-page">
+    <div class="home-shell">
+      <div class="hero-card">
+        <div class="hero-head">
+          <div>
+            <p class="hero-label">已登录</p>
+            <h1 class="hero-title">{{ authStore.user?.username || 'AI 助手' }}</h1>
+          </div>
+          <span class="role-pill">{{ authStore.user?.role === 'admin' ? '管理员' : '普通用户' }}</span>
+        </div>
+        <p class="hero-subtitle">选择一个入口，继续当前的问答会话。</p>
+      </div>
 
-    <div class="user-info" v-if="authStore.user">
-      <p class="username">{{ authStore.user.username }}</p>
-      <p class="role-tag">{{ authStore.user.role === 'admin' ? '管理员' : '普通用户' }}</p>
-    </div>
+      <button class="entry-card" @click="router.push('/sql')">
+        <div class="entry-main">
+          <span class="entry-icon">◎</span>
+          <div>
+            <p class="entry-title">自然语言查数</p>
+            <p class="entry-desc">根据业务问题自动查询数据并生成自然语言回答</p>
+          </div>
+        </div>
+        <span class="entry-arrow">›</span>
+      </button>
 
-    <div class="tool-card">
-      <p class="tool-title">自然语言查数</p>
-      <p class="tool-desc">
-        直接输入“今天完成了哪些待办？”这类问题，系统会自动查询并返回自然语言答案。
-      </p>
-      <button class="query-btn" @click="router.push('/sql')">进入查数</button>
-    </div>
+      <button class="entry-card" @click="router.push('/knowledge-base')">
+        <div class="entry-main">
+          <span class="entry-icon entry-icon-teal">◌</span>
+          <div>
+            <p class="entry-title">文档问答</p>
+            <p class="entry-desc">围绕知识库文档连续追问，并查看引用来源</p>
+          </div>
+        </div>
+        <span class="entry-arrow">›</span>
+      </button>
 
-    <div class="tool-card">
-      <p class="tool-title">文档知识库问答</p>
-      <p class="tool-desc">
-        先选择知识库，再针对上传的文档内容发问，系统会返回流式回答和引用来源。
-      </p>
-      <button class="query-btn kb-btn" @click="router.push('/knowledge-base')">进入文档问答</button>
+      <button class="logout-btn" @click="handleLogout">退出登录</button>
     </div>
-
-    <button class="logout-btn" @click="handleLogout">退出登录</button>
   </div>
 </template>
 
@@ -38,9 +47,6 @@ import { api } from '@/utils/request'
 const router = useRouter()
 const authStore = useAuthStore()
 
-/**
- * 登出处理
- */
 const handleLogout = async () => {
   try {
     await api.post<{ success: boolean }>('/auth/logout', {})
@@ -54,107 +60,135 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-.index-container {
+.home-page {
   min-height: 100vh;
-  padding: 120px 20px 20px;
-  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  padding: 24px 18px 28px;
+  background:
+    radial-gradient(circle at top left, rgba(111, 162, 255, 0.22), transparent 30%),
+    linear-gradient(180deg, #eef4ff 0%, #f6f8ff 100%);
 }
 
-.header {
-  text-align: center;
-  margin-bottom: 40px;
+.home-shell {
+  max-width: 380px;
+  margin: 0 auto;
 }
 
-.title {
-  font-size: 32px;
-  font-weight: bold;
+.hero-card {
+  border: 1px solid rgba(114, 157, 255, 0.08);
+  border-radius: 24px;
+  background: linear-gradient(155deg, #6ea1ff 0%, #4e7bf2 100%);
   color: #fff;
-  margin-bottom: 8px;
+  box-shadow: 0 18px 40px rgba(79, 121, 238, 0.18);
+  padding: 18px;
+  margin-bottom: 14px;
 }
 
-.subtitle {
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.8);
+.hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.user-info {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-  padding: 24px;
-  text-align: center;
-  margin-bottom: 30px;
-  backdrop-filter: blur(10px);
-}
-
-.username {
-  font-size: 24px;
-  font-weight: bold;
-  color: #fff;
-}
-
-.role-tag {
-  margin-top: 12px;
-  display: inline-flex;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+.hero-label {
+  margin: 0 0 6px;
   font-size: 12px;
+  color: rgba(255, 255, 255, 0.76);
 }
 
-.tool-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 24px 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
-}
-
-.tool-title {
-  font-size: 20px;
+.hero-title {
+  margin: 0;
+  font-size: 24px;
   font-weight: 700;
-  color: #111827;
-  margin-bottom: 8px;
+  color: #fff;
 }
 
-.tool-desc {
+.hero-subtitle {
+  margin: 12px 0 0;
   font-size: 14px;
   line-height: 1.7;
-  color: #4B5563;
-  margin-bottom: 18px;
+  color: rgba(255, 255, 255, 0.84);
 }
 
-.query-btn {
-  width: 100%;
-  height: 48px;
-  border: none;
-  border-radius: 12px;
-  background: #111827;
-  color: #fff;
-  font-size: 15px;
+.role-pill {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 6px 10px;
+  font-size: 12px;
   font-weight: 600;
+  color: #fff;
 }
 
-.kb-btn {
-  background: #0f766e;
+.entry-card {
+  width: 100%;
+  border: 1px solid rgba(226, 232, 240, 0.84);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 28px rgba(98, 120, 170, 0.08);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+}
+
+.entry-card + .entry-card {
+  margin-top: 12px;
+}
+
+.entry-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.entry-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.entry-icon-teal {
+  background: rgba(13, 148, 136, 0.1);
+  color: #0f766e;
+}
+
+.entry-title {
+  margin: 1px 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.entry-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.entry-arrow {
+  font-size: 22px;
+  color: #94a3b8;
 }
 
 .logout-btn {
   width: 100%;
-  height: 48px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  cursor: pointer;
-}
-
-.query-btn:hover,
-.logout-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
+  height: 44px;
+  margin-top: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.84);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
 }
 </style>

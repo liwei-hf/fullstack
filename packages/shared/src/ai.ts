@@ -9,6 +9,7 @@
 
 export interface AiSqlStreamRequest {
   question: string;
+  sessionId?: string;
 }
 
 export interface AiSqlSummaryItem {
@@ -20,12 +21,25 @@ export type AiSqlSseEvent =
   | {
       type: 'meta';
       requestId: string;
+      sessionId: string;
       role: 'admin' | 'user';
       timestamp: string;
     }
   | {
+      type: 'thinking_delta';
+      delta: string;
+    }
+  | {
+      type: 'thinking_done';
+    }
+  | {
       type: 'sql_generated';
       sql: string;
+    }
+  | {
+      type: 'loading';
+      stage: 'generating_sql' | 'executing_sql' | 'generating_answer';
+      message: string;
     }
   | {
       type: 'answer_delta';

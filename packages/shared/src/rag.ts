@@ -46,6 +46,27 @@ export const KNOWLEDGE_BASE_CHUNK_STRATEGIES = [
 export type KnowledgeBaseChunkStrategy = (typeof KNOWLEDGE_BASE_CHUNK_STRATEGIES)[number];
 
 /**
+ * ZIP 批量导入任务状态
+ *
+ * 说明：
+ * - UPLOADED: ZIP 原包已上传，等待后台处理
+ * - PROCESSING: 正在解压、筛选和逐文件导入
+ * - COMPLETED: 全部文件导入完成
+ * - FAILED: 整个导入任务失败
+ * - PARTIAL_SUCCESS: 部分文件成功，部分失败
+ */
+export const KNOWLEDGE_BASE_IMPORT_JOB_STATUSES = [
+  'UPLOADED',
+  'PROCESSING',
+  'COMPLETED',
+  'FAILED',
+  'PARTIAL_SUCCESS',
+] as const;
+
+export type KnowledgeBaseImportJobStatus =
+  (typeof KNOWLEDGE_BASE_IMPORT_JOB_STATUSES)[number];
+
+/**
  * 知识库列表项
  */
 export interface KnowledgeBaseItem {
@@ -74,6 +95,7 @@ export interface KnowledgeBaseDetail extends KnowledgeBaseItem {
 export interface KnowledgeBaseDocumentItem {
   id: string;
   knowledgeBaseId: string;
+  importJobId?: string | null;
   fileName: string;
   fileType: string;
   chunkStrategy: KnowledgeBaseChunkStrategy;
@@ -103,6 +125,7 @@ export interface CreateKnowledgeBaseRequest {
  */
 export interface RagChatStreamRequest {
   question: string;
+  sessionId?: string;
 }
 
 /**
@@ -110,6 +133,35 @@ export interface RagChatStreamRequest {
  */
 export interface UploadKnowledgeBaseDocumentRequest {
   chunkStrategy: KnowledgeBaseChunkStrategy;
+}
+
+/**
+ * 上传 ZIP 导入知识库请求
+ */
+export interface ImportKnowledgeBaseZipRequest {
+  chunkStrategy: KnowledgeBaseChunkStrategy;
+}
+
+/**
+ * ZIP 导入任务列表项
+ */
+export interface KnowledgeBaseImportJobItem {
+  id: string;
+  knowledgeBaseId: string;
+  fileName: string;
+  objectKey: string;
+  chunkStrategy: KnowledgeBaseChunkStrategy;
+  status: KnowledgeBaseImportJobStatus;
+  totalFileCount: number;
+  successFileCount: number;
+  failedFileCount: number;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  uploadedBy: {
+    id: string;
+    username: string;
+  };
 }
 
 /**
@@ -129,8 +181,21 @@ export type RagSseEvent =
   | {
       type: 'meta';
       requestId: string;
+      sessionId: string;
       knowledgeBaseId: string;
       timestamp: string;
+    }
+  | {
+      type: 'thinking_delta';
+      delta: string;
+    }
+  | {
+      type: 'thinking_done';
+    }
+  | {
+      type: 'loading';
+      stage: 'retrieving' | 'generating_answer';
+      message: string;
     }
   | {
       type: 'answer_delta';

@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import type { Response } from 'express';
-import { buildKnowledgeBaseAnswerPrompt } from '../ai/prompts';
 import { PrismaService } from '../prisma/prisma.service';
+import { AiSessionMemoryService } from '../ai/ai-session-memory.service';
+import { PromptService } from '../ai/prompt.service';
+import { buildKnowledgeBaseAnswerVariables } from '../ai/prompt-defaults.registry';
 import { KnowledgeBaseModelService } from './knowledge-base-model.service';
 import { KnowledgeBaseRetrievalService } from './knowledge-base-retrieval.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
@@ -23,6 +24,8 @@ export class KnowledgeBaseChatService {
     private readonly knowledgeBaseService: KnowledgeBaseService,
     private readonly retrievalService: KnowledgeBaseRetrievalService,
     private readonly modelService: KnowledgeBaseModelService,
+    private readonly sessionMemoryService: AiSessionMemoryService,
+    private readonly promptService: PromptService,
   ) {}
 
   /**
@@ -36,9 +39,20 @@ export class KnowledgeBaseChatService {
     question: string,
     user: AuthenticatedRequestUser,
     res: Response,
+    requestId: string,
+    inputSessionId?: string,
   ) {
-    const requestId = randomUUID();
     const startedAt = Date.now();
+    const sessionId = this.sessionMemoryService.resolveSessionId(inputSessionId);
+    const historyText = await this.sessionMemoryService.getHistoryText({
+      feature: 'knowledge_base',
+      userId: user.sub,
+      knowledgeBaseId,
+      sessionId,
+    });
+    const effectiveQuestion = historyText
+      ? [`最近对话上下文：`, historyText, '', `当前问题：${question}`].join('\n')
+      : question;
 
     this.logger.log(
       JSON.stringify({
@@ -46,17 +60,25 @@ export class KnowledgeBaseChatService {
         stage: 'rag_request_started',
         knowledgeBaseId,
         userId: user.sub,
+        sessionId,
       }),
     );
 
     this.writeEvent(res, 'meta', {
       type: 'meta',
       requestId,
+      sessionId,
       knowledgeBaseId,
       timestamp: new Date().toISOString(),
     });
 
     try {
+      this.writeEvent(res, 'loading', {
+        type: 'loading',
+        stage: 'retrieving',
+        message: '正在检索知识库内容...',
+      });
+
       const knowledgeBaseCheckStartedAt = Date.now();
       await this.knowledgeBaseService.ensureKnowledgeBaseExists(knowledgeBaseId);
       const knowledgeBaseCheckDurationMs = Date.now() - knowledgeBaseCheckStartedAt;
@@ -76,6 +98,17 @@ export class KnowledgeBaseChatService {
       );
 
       if (readyDocumentCount === 0) {
+        await this.persistQaLog({
+          knowledgeBaseId,
+          userId: user.sub,
+          requestId,
+          question,
+          answer: '当前知识库还没有可用文档，请先在管理端上传并处理完成后再提问。',
+          sourceCount: 0,
+          durationMs: Date.now() - startedAt,
+          success: false,
+          errorMessage: 'NO_READY_DOCUMENTS',
+        });
         this.writeEvent(res, 'answer_delta', {
           type: 'answer_delta',
           delta: '当前知识库还没有可用文档，请先在管理端上传并处理完成后再提问。',
@@ -102,9 +135,24 @@ export class KnowledgeBaseChatService {
       }
 
       // 先把检索阶段跑完，回答模型只消费预算后的上下文，避免 prompt 过大。
-      const retrieved = await this.retrievalService.retrieveContext(knowledgeBaseId, question, requestId);
+      const retrieved = await this.retrievalService.retrieveContext(
+        knowledgeBaseId,
+        effectiveQuestion,
+        requestId,
+      );
 
       if (!retrieved.candidates.length) {
+        await this.persistQaLog({
+          knowledgeBaseId,
+          userId: user.sub,
+          requestId,
+          question,
+          answer: '当前知识库里还没有可命中的内容，可以先上传文档或换个问法再试。',
+          sourceCount: 0,
+          durationMs: Date.now() - startedAt,
+          success: false,
+          errorMessage: 'NO_RETRIEVAL_CANDIDATES',
+        });
         this.writeEvent(res, 'answer_delta', {
           type: 'answer_delta',
           delta: '当前知识库里还没有可命中的内容，可以先上传文档或换个问法再试。',
@@ -139,12 +187,24 @@ export class KnowledgeBaseChatService {
       const llmStartedAt = Date.now();
       const chatModelInfo = this.modelService.getChatModelInfo();
       const model = this.modelService.createChatModel();
-      // prompt 单独收口后，后续调回答风格或补规则时不用再改问答主流程。
-      const stream = await model.stream(
-        buildKnowledgeBaseAnswerPrompt({
+      // 这里先解析当前实际生效的 Prompt 版本，再把结果交给聊天模型，
+      // 这样后台发布 Prompt 新版本后，知识库问答链路会立刻跟着切换。
+      const resolvedPrompt = await this.promptService.resolvePrompt(
+        'knowledge_base_answer',
+        buildKnowledgeBaseAnswerVariables({
           question,
           contextText: retrieved.contextText,
+          historyText,
         }),
+      );
+      this.writeEvent(res, 'loading', {
+        type: 'loading',
+        stage: 'generating_answer',
+        message: '正在组织答案...',
+      });
+
+      const stream = await model.stream(
+        [resolvedPrompt.systemPrompt, '', resolvedPrompt.userPrompt].join('\n\n'),
       );
       const llmRequestDurationMs = Date.now() - llmStartedAt;
 
@@ -163,11 +223,29 @@ export class KnowledgeBaseChatService {
       let answer = '';
       let answerChunkCount = 0;
       let firstChunkDurationMs: number | null = null;
+      let thinkingStarted = false;
+      let thinkingFinished = false;
       // 首包耗时是体验最敏感的指标，所以这里单独打点，便于定位慢点是在检索还是回答模型。
       for await (const chunk of stream) {
+        const thinkingDelta = this.extractThinking(chunk);
+        if (thinkingDelta) {
+          thinkingStarted = true;
+          this.writeEvent(res, 'thinking_delta', {
+            type: 'thinking_delta',
+            delta: thinkingDelta,
+          });
+        }
+
         const delta = this.extractText(chunk.content);
         if (!delta) {
           continue;
+        }
+
+        if (thinkingStarted && !thinkingFinished) {
+          thinkingFinished = true;
+          this.writeEvent(res, 'thinking_done', {
+            type: 'thinking_done',
+          });
         }
 
         answerChunkCount += 1;
@@ -189,16 +267,33 @@ export class KnowledgeBaseChatService {
         });
       }
 
+      if (thinkingStarted && !thinkingFinished) {
+        this.writeEvent(res, 'thinking_done', {
+          type: 'thinking_done',
+        });
+      }
+
       const qaLogStartedAt = Date.now();
-      await this.prisma.qaLog.create({
-        data: {
-          knowledgeBaseId,
-          userId: user.sub,
-          question,
-          answer,
-          sourceCount: retrieved.sources.length,
-        },
+      await this.persistQaLog({
+        knowledgeBaseId,
+        userId: user.sub,
+        requestId,
+        question,
+        answer,
+        sourceCount: retrieved.sources.length,
+        durationMs: Date.now() - startedAt,
+        success: true,
       });
+      await this.sessionMemoryService.appendTurn(
+        {
+          feature: 'knowledge_base',
+          userId: user.sub,
+          knowledgeBaseId,
+          sessionId,
+        },
+        question,
+        answer,
+      );
       const qaLogDurationMs = Date.now() - qaLogStartedAt;
       const answerDurationMs = Date.now() - llmStartedAt;
 
@@ -213,6 +308,7 @@ export class KnowledgeBaseChatService {
           requestId,
           stage: 'rag_request_completed',
           durationMs: Date.now() - startedAt,
+          sessionId,
           sourceCount: retrieved.sources.length,
           answerLength: answer.length,
           answerChunkCount,
@@ -223,12 +319,24 @@ export class KnowledgeBaseChatService {
         }),
       );
     } catch (error) {
+      await this.persistQaLog({
+        knowledgeBaseId,
+        userId: user.sub,
+        requestId,
+        question,
+        answer: null,
+        sourceCount: 0,
+        durationMs: Date.now() - startedAt,
+        success: false,
+        errorMessage: error instanceof Error ? error.message : '知识库问答失败，请稍后再试',
+      });
       this.logger.error(
         JSON.stringify({
           requestId,
           stage: 'rag_stream_failed',
           knowledgeBaseId,
           question,
+          sessionId,
           userId: user.sub,
           message: error instanceof Error ? error.message : String(error),
         }),
@@ -273,5 +381,116 @@ export class KnowledgeBaseChatService {
     }
 
     return '';
+  }
+
+  /**
+   * 从 LangChain chunk 中尽量提取“思考过程”文本。
+   *
+   * 说明：
+   * - 不同模型/适配层可能把 think 放在 additional_kwargs 或 response_metadata
+   * - 这里做兼容提取，前端能优先看到模型思考过程，正文开始时再自动折叠
+   */
+  private extractThinking(chunk: unknown) {
+    if (!chunk || typeof chunk !== 'object') {
+      return '';
+    }
+
+    const objectChunk = chunk as {
+      additional_kwargs?: Record<string, unknown>;
+      response_metadata?: Record<string, unknown>;
+    };
+
+    return (
+      this.normalizeThinkingValue(objectChunk.additional_kwargs?.reasoning_content) ||
+      this.normalizeThinkingValue(objectChunk.additional_kwargs?.reasoning) ||
+      this.normalizeThinkingValue(objectChunk.additional_kwargs?.thinking) ||
+      this.normalizeThinkingValue(objectChunk.response_metadata?.reasoning_content) ||
+      this.normalizeThinkingValue(objectChunk.response_metadata?.reasoning) ||
+      this.normalizeThinkingValue(objectChunk.response_metadata?.thinking)
+    );
+  }
+
+  private normalizeThinkingValue(value: unknown): string {
+    if (!value) {
+      return '';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (typeof item === 'string') {
+            return item;
+          }
+
+          if (item && typeof item === 'object') {
+            if ('text' in item && typeof item.text === 'string') {
+              return item.text;
+            }
+
+            if ('content' in item && typeof item.content === 'string') {
+              return item.content;
+            }
+          }
+
+          return '';
+        })
+        .join('');
+    }
+
+    if (typeof value === 'object') {
+      if ('text' in value && typeof value.text === 'string') {
+        return value.text;
+      }
+
+      if ('content' in value && typeof value.content === 'string') {
+        return value.content;
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * 问答失败时也尽量保留日志，但日志写失败不能反过来把 SSE 主流程打断。
+   *
+   * 同时这里会跳过不存在的知识库，避免最早的 not found 错误被外键错误覆盖。
+   */
+  private async persistQaLog(data: {
+    knowledgeBaseId: string;
+    userId: string;
+    requestId: string;
+    question: string;
+    answer: string | null;
+    sourceCount: number;
+    durationMs: number;
+    success: boolean;
+    errorMessage?: string;
+  }) {
+    try {
+      const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
+        where: { id: data.knowledgeBaseId },
+        select: { id: true },
+      });
+
+      if (!knowledgeBase) {
+        return;
+      }
+
+      await this.prisma.qaLog.create({
+        data,
+      });
+    } catch (logError) {
+      this.logger.error(
+        JSON.stringify({
+          requestId: data.requestId,
+          stage: 'qa_log_persist_failed',
+          message: logError instanceof Error ? logError.message : String(logError),
+        }),
+      );
+    }
   }
 }

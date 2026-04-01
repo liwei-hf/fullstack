@@ -11,17 +11,28 @@
  * - 未登录用户访问受保护路由时，重定向到登录页
  * - 已登录用户通过 ProtectedRoute 包裹，显示 Layout 布局
  */
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
-import LoginPage from '@/pages/LoginPage';
-import DashboardPage from '@/pages/DashboardPage';
-import UserListPage from '@/pages/UserListPage';
-import SettingsPage from '@/pages/SettingsPage';
-import TodoListPage from '@/pages/TodoListPage';
-import KnowledgeBasePage from '@/pages/KnowledgeBasePage';
-import KnowledgeBaseChatPage from '@/pages/KnowledgeBaseChatPage';
-import SqlQueryPage from '@/pages/SqlQueryPage';
 import { useAuthStore } from '@/store/auth-store';
+
+/**
+ * 管理端页面按路由懒加载
+ *
+ * 现在后台页面已经越来越多，直接同步 import 会把所有 AI / 知识库页面都塞进首屏包体。
+ * 这里改成 lazy + Suspense，可以明显降低首次加载压力。
+ */
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const UserListPage = lazy(() => import('@/pages/UserListPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const TodoListPage = lazy(() => import('@/pages/TodoListPage'));
+const KnowledgeBasePage = lazy(() => import('@/pages/KnowledgeBasePage'));
+const KnowledgeBaseChatPage = lazy(() => import('@/pages/KnowledgeBaseChatPage'));
+const SqlQueryPage = lazy(() => import('@/pages/SqlQueryPage'));
+const AiLogPage = lazy(() => import('@/pages/AiLogPage'));
+const PromptManagementPage = lazy(() => import('@/pages/PromptManagementPage'));
+const PromptTemplateListPage = lazy(() => import('@/pages/PromptTemplateListPage'));
 
 /**
  * 受保护路由组件
@@ -38,6 +49,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <Layout>{children}</Layout>;
 }
 
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[240px] items-center justify-center rounded-2xl border bg-white text-sm text-slate-500">
+      页面加载中...
+    </div>
+  );
+}
+
 /**
  * 应用根组件
  *
@@ -51,65 +70,91 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter future={{ v7_relativeSplatPath: true }}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <DashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/users"
-          element={
-            <ProtectedRoute>
-              <UserListPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/todos"
-          element={
-            <ProtectedRoute>
-              <TodoListPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/knowledge-base"
-          element={
-            <ProtectedRoute>
-              <KnowledgeBasePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/knowledge-base/chat"
-          element={
-            <ProtectedRoute>
-              <KnowledgeBaseChatPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/ai/sql"
-          element={
-            <ProtectedRoute>
-              <SqlQueryPage />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute>
+                <UserListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/todos"
+            element={
+              <ProtectedRoute>
+                <TodoListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/knowledge-base"
+            element={
+              <ProtectedRoute>
+                <KnowledgeBasePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/knowledge-base/chat"
+            element={
+              <ProtectedRoute>
+                <KnowledgeBaseChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai/sql"
+            element={
+              <ProtectedRoute>
+                <SqlQueryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai/logs"
+            element={
+              <ProtectedRoute>
+                <AiLogPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai/prompts"
+            element={
+              <ProtectedRoute>
+                <PromptTemplateListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai/prompts/:code"
+            element={
+              <ProtectedRoute>
+                <PromptManagementPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

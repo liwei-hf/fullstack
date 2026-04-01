@@ -4,6 +4,7 @@ import type {
   KnowledgeBaseChunkStrategy,
   KnowledgeBaseDetail,
   KnowledgeBaseDocumentItem,
+  KnowledgeBaseImportJobItem,
   KnowledgeBaseItem,
   UploadKnowledgeBaseDocumentRequest,
 } from '@fullstack/shared';
@@ -53,6 +54,7 @@ export default function KnowledgeBasePage() {
     description: '',
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null);
   const [selectedChunkStrategy, setSelectedChunkStrategy] =
     useState<KnowledgeBaseChunkStrategy>('fixed');
 
@@ -182,6 +184,46 @@ export default function KnowledgeBasePage() {
     }
   };
 
+  const handleZipImport = async () => {
+    if (!selectedId) {
+      toast({
+        title: '请先选择知识库',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!selectedZipFile) {
+      toast({
+        title: '请选择 ZIP 文件',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedZipFile);
+      formData.append('chunkStrategy', selectedChunkStrategy);
+      await api.upload<KnowledgeBaseImportJobItem>(
+        `/knowledge-base/${selectedId}/import-zip`,
+        formData,
+      );
+      setSelectedZipFile(null);
+      toast({ title: '压缩包已上传，后台正在批量解析' });
+      await fetchDetailAndDocuments(selectedId);
+      await fetchKnowledgeBases(selectedId);
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : '上传 ZIP 失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDeleteDocument = async (documentId: string) => {
     if (!confirm('确定要删除这个文档吗？删除后将不再参与检索。')) {
       return;
@@ -300,17 +342,33 @@ export default function KnowledgeBasePage() {
               )}
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-700">上传文档</p>
-                <input
-                  type="file"
-                  accept=".pdf,.md,.markdown,.txt,.docx"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
-                  className="block w-full text-sm text-gray-600"
-                />
-                <p className="text-xs text-muted-foreground">
-                  仅支持 PDF / Markdown / TXT / DOCX，单文件不超过 20MB。
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">上传单个文档</p>
+                  <input
+                    type="file"
+                    accept=".pdf,.md,.markdown,.txt,.docx"
+                    onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+                    className="block w-full text-sm text-gray-600"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    仅支持 PDF / Markdown / TXT / DOCX，单文件不超过 20MB。
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">ZIP 批量导入</p>
+                  <input
+                    type="file"
+                    accept=".zip"
+                    onChange={(event) => setSelectedZipFile(event.target.files?.[0] || null)}
+                    className="block w-full text-sm text-gray-600"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    ZIP 内只会解析文档格式文件，并忽略明显噪音目录。
+                  </p>
+                </div>
+
                 <div className="space-y-2 pt-2">
                   <p className="text-sm font-medium text-gray-700">切片方式</p>
                   <select
@@ -336,9 +394,18 @@ export default function KnowledgeBasePage() {
                   </p>
                 </div>
               </div>
-              <Button onClick={handleUpload} disabled={uploading || !selectedId}>
-                {uploading ? '上传中...' : '上传到当前知识库'}
-              </Button>
+              <div className="grid gap-2">
+                <Button onClick={handleUpload} disabled={uploading || !selectedId}>
+                  {uploading ? '处理中...' : '上传单个文档'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleZipImport}
+                  disabled={uploading || !selectedId}
+                >
+                  {uploading ? '处理中...' : '导入 ZIP 文档包'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

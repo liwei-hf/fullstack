@@ -1,6 +1,6 @@
 @echo off
 REM =============================================================================
-REM 一键启动脚本 - Fullstack Interview Project (Windows 版本)
+REM 初始化启动脚本 - Fullstack Interview Project (Windows 版本)
 REM =============================================================================
 REM 当前脚本对应最新项目结构：
 REM 1. apps/server   -> NestJS 后端（默认 3334）
@@ -14,7 +14,7 @@ setlocal enabledelayedexpansion
 set PROJECT_ROOT=%~dp0
 
 echo ============================================
-echo    Fullstack Interview Project - 启动脚本
+echo    Fullstack Interview Project - 初始化脚本
 echo ============================================
 echo.
 
@@ -98,7 +98,8 @@ echo   手机端 H5:     http://localhost:3336
 echo   MinIO API:     http://localhost:9000
 echo   MinIO Console: http://localhost:9001
 echo.
-echo   说明：本脚本只启动前后端开发服务，PostgreSQL/MinIO 请先确保已启动
+echo   说明：本脚本适合首次初始化，会执行 Prisma 同步和种子数据播入
+echo   日常开发：建议改用 dev.bat，避免反复执行 db push / seed
 echo   默认账号：admin / Admin123456!
 echo   按 Ctrl+C 停止当前脚本拉起的开发服务
 echo.

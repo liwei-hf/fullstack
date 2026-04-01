@@ -23,7 +23,7 @@ interface ResolvedModelInfo {
  */
 @Injectable()
 export class KnowledgeBaseModelService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   // 返回当前实际生效的聊天模型信息，主要用于日志和排查耗时。
   getChatModelInfo(model?: string): ResolvedModelInfo {
@@ -182,7 +182,7 @@ export class KnowledgeBaseModelService {
       baseURL: usingZhipu
         ? this.configService.get<string>('ZHIPU_BASE_URL')
         : this.configService.get<string>('OPENAI_RERANK_BASE_URL'),
-      };
+    };
   }
 
   private buildConfiguration(baseURL?: string) {

@@ -34,28 +34,90 @@ import {
   ClipboardList,
   Database,
   BrainCircuit,
+  History,
   MessageSquareText,
+  Sparkles,
+  ChevronDown,
+  FolderKanban,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth-store';
 import { cn } from '@/lib/utils';
 
 /**
- * 导航菜单配置
+ * 单个菜单项配置
  *
- * name: 菜单名称（中文显示）
- * href: 路由路径
- * icon: 菜单图标（Lucide React 图标组件）
+ * matchMode 用来控制路由高亮规则：
+ * - exact：只在路径完全一致时高亮，适合“知识库管理 / 知识库问答”这类前缀相似页面
+ * - prefix：允许详情页沿用同一菜单高亮，适合 Prompt 管理这类列表 -> 详情结构
  */
-const navigation = [
-  { name: '仪表盘', href: '/', icon: LayoutDashboard },
-  { name: '用户管理', href: '/users', icon: Users },
-  { name: '任务管理', href: '/todos', icon: ClipboardList },
-  { name: '知识库管理', href: '/knowledge-base', icon: Database },
-  { name: '知识库问答', href: '/knowledge-base/chat', icon: MessageSquareText },
-  { name: '智能问数', href: '/ai/sql', icon: BrainCircuit },
-  { name: '设置', href: '/settings', icon: Settings },
+type NavigationItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  matchMode?: 'exact' | 'prefix';
+};
+
+/**
+ * 二级菜单分组
+ *
+ * 后台入口已经从“知识库管理 / 知识库问答 / 智能问数”拆成独立能力，
+ * 这里继续在导航层做一级分组，避免菜单平铺过长，也更符合后台信息架构。
+ */
+type NavigationGroup = {
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NavigationItem[];
+};
+
+const navigationGroups: NavigationGroup[] = [
+  {
+    name: '业务管理',
+    icon: FolderKanban,
+    items: [
+      { name: '仪表盘', href: '/', icon: LayoutDashboard, matchMode: 'exact' },
+      { name: '用户管理', href: '/users', icon: Users, matchMode: 'exact' },
+      { name: '任务管理', href: '/todos', icon: ClipboardList, matchMode: 'exact' },
+      { name: '设置', href: '/settings', icon: Settings, matchMode: 'exact' },
+    ],
+  },
+  {
+    name: 'AI 能力',
+    icon: BrainCircuit,
+    items: [
+      { name: '知识库管理', href: '/knowledge-base', icon: Database, matchMode: 'exact' },
+      { name: '知识库问答', href: '/knowledge-base/chat', icon: MessageSquareText, matchMode: 'exact' },
+      { name: '智能问数', href: '/ai/sql', icon: BrainCircuit, matchMode: 'exact' },
+      { name: '问答日志', href: '/ai/logs', icon: History, matchMode: 'exact' },
+      { name: 'Prompt 管理', href: '/ai/prompts', icon: Sparkles, matchMode: 'prefix' },
+    ],
+  },
 ];
+
+/**
+ * 判断菜单项是否匹配当前路由。
+ *
+ * 这里单独抽出来，是为了避免 `/knowledge-base` 把 `/knowledge-base/chat`
+ * 也一起高亮的问题。
+ */
+function isNavigationItemActive(item: NavigationItem, pathname: string) {
+  if (item.matchMode === 'prefix') {
+    return pathname === item.href || pathname.startsWith(`${item.href}/`);
+  }
+
+  return pathname === item.href;
+}
+
+function getCurrentPageTitle(pathname: string) {
+  for (const group of navigationGroups) {
+    const matchedItem = group.items.find((item) => isNavigationItemActive(item, pathname));
+    if (matchedItem) {
+      return matchedItem.name;
+    }
+  }
+
+  return '页面';
+}
 
 /**
  * 布局组件
@@ -67,6 +129,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { user, logout, refreshToken } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({
+    业务管理: true,
+    'AI 能力': true,
+  });
 
   /**
    * 退出登录处理
@@ -100,22 +166,64 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* 导航 */}
         <ScrollArea className="flex-1 px-3 py-4">
-          <nav className="space-y-1">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  location.pathname === item.href
-                    ? 'bg-blue-50 text-blue-600'  // 当前页面高亮
-                    : 'text-gray-600 hover:bg-gray-100',  // 普通状态
-                )}
-              >
-                <item.icon className="w-5 h-5" />
-                {sidebarOpen && <span>{item.name}</span>}
-              </Link>
-            ))}
+          <nav className="space-y-3">
+            {navigationGroups.map((group) => {
+              const isGroupActive = group.items.some((item) =>
+                isNavigationItemActive(item, location.pathname),
+              );
+              const isExpanded = groupOpen[group.name];
+
+              return (
+                <div key={group.name} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGroupOpen((prev) => ({
+                        ...prev,
+                        [group.name]: !prev[group.name],
+                      }))
+                    }
+                    className={cn(
+                      'flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      isGroupActive ? 'text-gray-900' : 'text-gray-500 hover:bg-gray-100',
+                    )}
+                  >
+                    <group.icon className="h-4 w-4 shrink-0" />
+                    {sidebarOpen && (
+                      <>
+                        <span className="ml-3 flex-1 text-left">{group.name}</span>
+                        <ChevronDown
+                          className={cn(
+                            'h-4 w-4 transition-transform',
+                            isExpanded && 'rotate-180',
+                          )}
+                        />
+                      </>
+                    )}
+                  </button>
+
+                  {isExpanded && (
+                    <div className={cn('space-y-1', sidebarOpen ? 'pl-6' : 'pl-0')}>
+                      {group.items.map((item) => (
+                        <Link
+                          key={item.name}
+                          to={item.href}
+                          className={cn(
+                            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                            isNavigationItemActive(item, location.pathname)
+                              ? 'bg-blue-50 text-blue-600'
+                              : 'text-gray-600 hover:bg-gray-100',
+                          )}
+                        >
+                          <item.icon className="h-4.5 w-4.5 shrink-0" />
+                          {sidebarOpen && <span>{item.name}</span>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </nav>
         </ScrollArea>
 
@@ -174,7 +282,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Menu className="w-5 h-5" />
           </Button>
           <h1 className="text-lg font-semibold text-gray-900">
-            {navigation.find((n) => n.href === location.pathname)?.name || '页面'}
+            {getCurrentPageTitle(location.pathname)}
           </h1>
         </header>
 

@@ -9,6 +9,19 @@ import { useAuthStore } from '@/store/auth-store'
 const BASE_URL = '/api'
 let refreshPromise: Promise<string> | null = null
 
+/**
+ * 生成链路 requestId
+ *
+ * 前端把 requestId 透传给后端后，日志和 SSE meta 可以共享同一个标识。
+ */
+function createRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `req_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
+}
+
 function getAccessToken() {
   const authStore = useAuthStore(pinia)
   if (authStore.token) {
@@ -103,10 +116,13 @@ async function authorizedFetch(
   allowRetry = true,
 ) {
   const accessToken = getAccessToken()
+  const requestId =
+    ((options.headers as Record<string, string> | undefined)?.['X-Request-Id']) || createRequestId()
   const response = await fetch(`${BASE_URL}${url}`, {
     ...options,
     headers: {
       ...(options.headers || {}),
+      'X-Request-Id': requestId,
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
   })
@@ -121,6 +137,7 @@ async function authorizedFetch(
       ...options,
       headers: {
         ...(options.headers || {}),
+        'X-Request-Id': requestId,
         Authorization: `Bearer ${refreshedAccessToken}`,
       },
     })
@@ -165,6 +182,7 @@ export const streamSse = async <T extends { type: string }>(
   url: string,
   data: unknown,
   onEvent: (event: T) => void,
+  signal?: AbortSignal,
 ) => {
   const response = await authorizedFetch(url, {
     method: 'POST',
@@ -172,6 +190,7 @@ export const streamSse = async <T extends { type: string }>(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(data),
+    signal,
   })
 
   if (response.status === 401) {
