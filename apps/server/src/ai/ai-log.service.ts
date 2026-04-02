@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import type { AiLogItem, AiLogType } from '@fullstack/shared';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import type { AiLogDetailItem, AiLogItem, AiLogType } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -11,6 +11,80 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class AiLogService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getCurrentUserLogDetail(params: {
+    id: string;
+    type: AiLogType;
+    userId: string;
+  }): Promise<AiLogDetailItem> {
+    if (params.type === 'sql_query') {
+      const item = await this.prisma.aiSqlLog.findFirst({
+        where: {
+          id: params.id,
+          userId: params.userId,
+        },
+      });
+
+      if (!item) {
+        throw new NotFoundException('问答日志不存在');
+      }
+
+      return {
+        id: item.id,
+        type: 'sql_query',
+        requestId: item.requestId,
+        question: item.question,
+        answer: item.answer,
+        success: item.success,
+        errorMessage: item.errorMessage,
+        durationMs: item.durationMs,
+        rowCount: item.rowCount,
+        sourceCount: null,
+        createdAt: item.createdAt.toISOString(),
+        knowledgeBase: null,
+        sql: item.sql,
+        thinking: item.thinking,
+      };
+    }
+
+    const item = await this.prisma.qaLog.findFirst({
+      where: {
+        id: params.id,
+        userId: params.userId,
+      },
+      include: {
+        knowledgeBase: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException('问答日志不存在');
+    }
+
+    return {
+      id: item.id,
+      type: 'knowledge_base',
+      requestId: item.requestId,
+      question: item.question,
+      answer: item.answer,
+      success: item.success,
+      errorMessage: item.errorMessage,
+      durationMs: item.durationMs,
+      rowCount: null,
+      sourceCount: item.sourceCount,
+      createdAt: item.createdAt.toISOString(),
+      knowledgeBase: item.knowledgeBase
+        ? {
+            id: item.knowledgeBase.id,
+            name: item.knowledgeBase.name,
+          }
+        : null,
+      sql: null,
+      thinking: item.thinking,
+    };
+  }
 
   async listCurrentUserLogs(params: {
     userId: string;

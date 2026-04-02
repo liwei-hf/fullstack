@@ -1,6 +1,6 @@
 @echo off
 REM =============================================================================
-REM 开发启动脚本 - Fullstack Interview Project (Windows 版本)
+REM 开发启动脚本 - Fullstack AI Platform (Windows 版本)
 REM =============================================================================
 REM 用途：
 REM 1. 日常开发时快速拉起前后端服务
@@ -12,7 +12,7 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul
 
 echo ============================================
-echo    Fullstack Interview Project - 开发脚本
+echo    Fullstack AI Platform - 开发脚本
 echo ============================================
 echo.
 

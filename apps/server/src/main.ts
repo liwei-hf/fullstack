@@ -15,9 +15,13 @@ import { AppModule } from './app.module';
 process.env.NODE_NO_WARNINGS = '1';
 
 async function bootstrap() {
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((item) => item.trim()).filter(Boolean)
+    : [];
+
   const app = await NestFactory.create(AppModule, {
     cors: {
-      origin: true,  // 允许所有来源跨域请求（生产环境应限制具体域名）
+      origin: corsOrigins.length > 0 ? corsOrigins : true,  // 生产环境可通过 CORS_ORIGINS 限制来源
       credentials: true,  // 允许携带认证信息（Cookie/Authorization）
     },
   });

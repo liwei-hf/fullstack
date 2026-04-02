@@ -34,7 +34,7 @@ export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
  *
  * 说明：
  * - fixed: 固定长度切片，适合通用文档和 MVP 默认策略
- * - paragraph: 段落优先切片，适合制度、手册等自然正文
+ * - paragraph: 段落优先切片，仅兼容历史数据，新上传文档不再推荐使用
  * - heading: 标题结构切片，适合章节层级清晰的文档
  */
 export const KNOWLEDGE_BASE_CHUNK_STRATEGIES = [
@@ -44,6 +44,44 @@ export const KNOWLEDGE_BASE_CHUNK_STRATEGIES = [
 ] as const;
 
 export type KnowledgeBaseChunkStrategy = (typeof KNOWLEDGE_BASE_CHUNK_STRATEGIES)[number];
+
+/**
+ * 知识库问答回答风格
+ *
+ * 说明：
+ * - concise: 优先直接给结论，适合制度查询、快速问答
+ * - balanced: 兼顾结论和解释，作为默认配置
+ * - detailed: 更详细展开说明，适合法律、规范类知识库
+ */
+export const KNOWLEDGE_BASE_ANSWER_STYLES = ['concise', 'balanced', 'detailed'] as const;
+
+export type KnowledgeBaseAnswerStyle = (typeof KNOWLEDGE_BASE_ANSWER_STYLES)[number];
+
+/**
+ * 知识库引用展示模式
+ *
+ * 说明：
+ * - required: 回答正文尽量体现依据意识
+ * - optional: 只在必要时点明依据
+ * - hidden: 正文不主动提来源，交给界面单独展示
+ */
+export const KNOWLEDGE_BASE_CITATION_MODES = ['required', 'optional', 'hidden'] as const;
+
+export type KnowledgeBaseCitationMode = (typeof KNOWLEDGE_BASE_CITATION_MODES)[number];
+
+/**
+ * 知识库问答配置
+ *
+ * 用途：
+ * - 每个知识库只保留一段补充提示词
+ * - 运行时统一叠加到当前生效的知识库问答模板上
+ */
+export interface KnowledgeBasePromptConfig {
+  systemPromptOverride: string | null;
+  answerStyle: KnowledgeBaseAnswerStyle;
+  citationMode: KnowledgeBaseCitationMode;
+  strictMode: boolean;
+}
 
 /**
  * ZIP 批量导入任务状态
@@ -87,6 +125,7 @@ export interface KnowledgeBaseDetail extends KnowledgeBaseItem {
     id: string;
     username: string;
   };
+  promptConfig: KnowledgeBasePromptConfig;
 }
 
 /**
@@ -118,6 +157,15 @@ export interface KnowledgeBaseDocumentItem {
 export interface CreateKnowledgeBaseRequest {
   name: string;
   description?: string;
+}
+
+/**
+ * 更新知识库请求
+ */
+export interface UpdateKnowledgeBaseRequest {
+  name?: string;
+  description?: string;
+  systemPromptOverride?: string;
 }
 
 /**

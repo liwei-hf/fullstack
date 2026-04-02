@@ -64,6 +64,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
+import { PageHeader } from '@/components/page-header';
 import { api } from '@/utils/api';
 import type { UserListItem, Department } from '@fullstack/shared';
 import {
@@ -274,22 +275,18 @@ export default function UserListPage() {
     <div className="space-y-6">
       <Toaster />
 
-      {/* 页面标题和操作 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">用户管理</h2>
-          <p className="text-muted-foreground mt-1">
-            管理系统用户，包括创建、编辑和权限控制
-          </p>
-        </div>
-        <Button onClick={handleAdd} className="gap-2">
-          <Plus className="w-4 h-4" />
-          新增用户
-        </Button>
-      </div>
+      <PageHeader
+        title="用户管理"
+        description="统一管理后台用户信息、部门归属和登录状态，页面延续轻卡片 + 低压迫感的 AI SaaS 后台视觉。"
+        actions={
+          <Button onClick={handleAdd} className="gap-2 rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
+            <Plus className="w-4 h-4" />
+            新增用户
+          </Button>
+        }
+      />
 
-      {/* 搜索和过滤 */}
-      <Card>
+      <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
         <CardContent className="pt-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -304,7 +301,7 @@ export default function UserListPage() {
       </Card>
 
       {/* 用户列表 */}
-      <Card>
+      <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
         <CardHeader>
           <CardTitle>用户列表</CardTitle>
         </CardHeader>
@@ -318,7 +315,7 @@ export default function UserListPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
                   <TableHead>用户</TableHead>
                   <TableHead>手机号</TableHead>
                   <TableHead>部门</TableHead>
@@ -462,13 +459,13 @@ export default function UserListPage() {
 
       {/* 编辑/新增对话框 */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent className="rounded-[24px] border-slate-200/80 p-0">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="border-b border-slate-100 px-6 py-5">
               {editingUser ? '编辑用户' : '新增用户'}
             </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 px-6 py-5">
             <div className="grid gap-2">
               <Label htmlFor="username">用户名</Label>
               <Input
@@ -494,10 +491,10 @@ export default function UserListPage() {
                 value={formData.departmentId}
                 onValueChange={(value) => setFormData({ ...formData, departmentId: value })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-slate-50/70 px-4 shadow-none focus:ring-blue-200">
                   <SelectValue placeholder="选择部门" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-2xl border-slate-200">
                   {departments?.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name}
@@ -507,11 +504,11 @@ export default function UserListPage() {
               </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
+          <DialogFooter className="border-t border-slate-100 px-6 py-5">
+            <Button variant="outline" className="rounded-2xl" onClick={() => setModalOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleModalOk}>确定</Button>
+            <Button className="rounded-2xl bg-[#3B82F6] hover:bg-blue-600" onClick={handleModalOk}>确定</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Patch,
   Param,
   Post,
   Req,
@@ -24,6 +25,7 @@ import { KnowledgeBaseService } from './knowledge-base.service';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { ImportZipDto } from './dto/import-zip.dto';
 import { RagChatStreamDto } from './dto/rag-chat-stream.dto';
+import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
 
@@ -67,6 +69,18 @@ export class KnowledgeBaseController {
   async getKnowledgeBase(@Param('id') id: string) {
     return {
       data: await this.knowledgeBaseService.getKnowledgeBase(id),
+    };
+  }
+
+  // 更新知识库基础信息和知识库级问答配置。
+  @Patch(':id')
+  async updateKnowledgeBase(
+    @Param('id') id: string,
+    @Body() dto: UpdateKnowledgeBaseDto,
+    @CurrentUser() user: AuthenticatedRequestUser,
+  ) {
+    return {
+      data: await this.knowledgeBaseService.updateKnowledgeBase(id, dto, user),
     };
   }
 

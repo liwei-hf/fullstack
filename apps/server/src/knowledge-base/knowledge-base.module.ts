@@ -11,6 +11,7 @@ import { KnowledgeBaseModelService } from './knowledge-base-model.service';
 import { KnowledgeBaseQueueService } from './knowledge-base-queue.service';
 import { KnowledgeBaseQueueWorker } from './knowledge-base-queue.worker';
 import { KnowledgeBaseParserService } from './knowledge-base-parser.service';
+import { KnowledgeBasePromptResolverService } from './knowledge-base-prompt-resolver.service';
 import { KnowledgeBaseRetrievalService } from './knowledge-base-retrieval.service';
 import { KnowledgeBaseRerankService } from './knowledge-base-rerank.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
@@ -34,6 +35,7 @@ import { KnowledgeBaseStorageService } from './knowledge-base-storage.service';
     KnowledgeBaseQueueService,
     KnowledgeBaseQueueWorker,
     KnowledgeBaseParserService,
+    KnowledgeBasePromptResolverService,
     KnowledgeBaseStorageService,
     KnowledgeBaseRetrievalService,
     KnowledgeBaseModelService,

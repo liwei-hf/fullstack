@@ -79,17 +79,6 @@
     </div>
 
     <div class="card content-card">
-      <div class="example-list">
-        <button
-          v-for="example in examples"
-          :key="example"
-          class="example-chip"
-          @click="question = example"
-        >
-          {{ example }}
-        </button>
-      </div>
-
       <div v-if="currentSession?.messages.length" class="message-list">
         <div
           v-for="message in currentSession.messages"
@@ -133,7 +122,20 @@
           </div>
         </div>
       </div>
-      <div v-else class="empty-box">开始第一轮提问后，这里会按聊天时间线展示对话。</div>
+      <div v-else class="empty-box">
+        <p class="empty-title">开始第一轮智能问数</p>
+        <p class="empty-text">直接输入业务问题，系统会给出结果解释，并在需要时附上 SQL。</p>
+        <div class="empty-examples">
+          <button
+            v-for="example in examples"
+            :key="example"
+            class="example-chip"
+            @click="question = example"
+          >
+            {{ example }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <button
@@ -148,10 +150,12 @@
     <div class="input-card">
       <div class="input-row">
         <textarea
+          ref="textareaRef"
           v-model="question"
           class="question-input"
           placeholder="例如：今天完成了哪些待办？"
           rows="1"
+          @input="handleInput"
           @keydown.enter.exact.prevent="handleAsk"
         />
         <button
@@ -168,7 +172,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { AiConversationMessage, AiConversationSession, AiSqlSseEvent } from '@fullstack/shared'
 import { streamSse } from '@/utils/request'
 import { renderMarkdown } from '@/utils/markdown'
@@ -191,6 +195,7 @@ const examples = [
 ]
 
 const router = useRouter()
+const route = useRoute()
 const abortController = ref<AbortController | null>(null)
 const sessions = ref<AiConversationSession[]>([])
 const activeSessionId = ref('')
@@ -199,6 +204,7 @@ const asking = ref(false)
 const drawerOpen = ref(false)
 const showScrollToBottom = ref(false)
 const sessionKeyword = ref('')
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 const currentSession = computed(
   () => sessions.value.find((item) => item.id === activeSessionId.value) || sessions.value[0] || null,
@@ -329,6 +335,20 @@ function handleStop() {
   abortController.value?.abort()
 }
 
+function resizeTextarea() {
+  if (!textareaRef.value) {
+    return
+  }
+
+  textareaRef.value.style.height = 'auto'
+  const nextHeight = Math.min(textareaRef.value.scrollHeight, 132)
+  textareaRef.value.style.height = `${Math.max(nextHeight, 46)}px`
+}
+
+function handleInput() {
+  resizeTextarea()
+}
+
 // 手机端也走标准聊天流：发送后先插入用户消息，再流式补齐助手消息。
 async function handleAsk() {
   if (asking.value) {
@@ -367,6 +387,7 @@ async function handleAsk() {
   }))
 
   question.value = ''
+  resizeTextarea()
   asking.value = true
   abortController.value = new AbortController()
 
@@ -504,6 +525,14 @@ function updateScrollToBottomVisibility() {
 initializeSessions()
 
 onMounted(() => {
+  if (typeof route.query.sessionId === 'string') {
+    const matchedSession = sessions.value.find((session) => session.id === route.query.sessionId)
+    if (matchedSession) {
+      activeSessionId.value = matchedSession.id
+    }
+  }
+
+  resizeTextarea()
   updateScrollToBottomVisibility()
   window.addEventListener('scroll', updateScrollToBottomVisibility, { passive: true })
   window.addEventListener('resize', updateScrollToBottomVisibility)
@@ -513,6 +542,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateScrollToBottomVisibility)
   window.removeEventListener('resize', updateScrollToBottomVisibility)
 })
+
+watch(
+  question,
+  async () => {
+    await nextTick()
+    resizeTextarea()
+  },
+)
 
 watch(
   sessions,
@@ -715,20 +752,34 @@ watch(
 }
 
 .drawer-item {
+  position: relative;
   width: 100%;
   border: 1px solid rgba(226, 232, 240, 0.88);
-  border-radius: 16px;
+  border-radius: 18px;
   background: #fff;
-  padding: 10px 12px;
-  min-height: 54px;
+  padding: 12px 12px 12px 14px;
+  min-height: 60px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
 
 .drawer-item-active {
-  border-color: rgba(79, 121, 238, 0.28);
+  border-color: rgba(79, 121, 238, 0.24);
   background: rgba(242, 247, 255, 0.98);
+  box-shadow: 0 12px 26px rgba(79, 121, 238, 0.12);
+}
+
+.drawer-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 999px;
+  background: #4b77ed;
 }
 
 .drawer-item-main {
@@ -850,11 +901,11 @@ watch(
   border: none;
   background: transparent;
   min-height: 46px;
-  max-height: 46px;
+  max-height: 132px;
   resize: none;
   padding-top: 11px;
   padding-bottom: 11px;
-  overflow: hidden;
+  overflow-y: auto;
   padding-left: 8px;
   padding-right: 0;
 }
@@ -870,6 +921,38 @@ watch(
   margin-top: 0;
   padding: 28px 12px 16px;
   text-align: center;
+}
+
+.empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.empty-text {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.example-chip {
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.08);
+  padding: 9px 14px;
+  font-size: 12px;
+  color: #35517d;
 }
 
 .message-list {

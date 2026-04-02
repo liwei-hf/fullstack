@@ -60,6 +60,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
+import { PageHeader } from '@/components/page-header';
 import { api } from '@/utils/api';
 import {
   Plus,
@@ -272,22 +273,18 @@ export default function TodoListPage() {
     <div className="space-y-6">
       <Toaster />
 
-      {/* 页面标题和操作 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">任务管理</h2>
-          <p className="text-muted-foreground mt-1">
-            管理个人任务，跟踪待办事项和进度
-          </p>
-        </div>
-        <Button onClick={handleAdd} className="gap-2">
-          <Plus className="w-4 h-4" />
-          新增任务
-        </Button>
-      </div>
+      <PageHeader
+        title="任务管理"
+        description="管理任务列表、状态流转和日常跟进，界面风格与整套后台保持统一的轻卡片工作台语言。"
+        actions={
+          <Button onClick={handleAdd} className="gap-2 rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
+            <Plus className="w-4 h-4" />
+            新增任务
+          </Button>
+        }
+      />
 
-      {/* 搜索和状态筛选 */}
-      <Card>
+      <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
         <CardContent className="pt-6">
           <div className="flex gap-4">
             <div className="relative flex-1">
@@ -300,10 +297,10 @@ export default function TodoListPage() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="h-10 w-[150px] rounded-2xl border-slate-200 bg-slate-50/70 px-4 shadow-none focus:ring-blue-200">
                 <SelectValue placeholder="全部状态" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="rounded-2xl border-slate-200">
                 <SelectItem value="all">全部状态</SelectItem>
                 <SelectItem value="TODO">待办</SelectItem>
                 <SelectItem value="IN_PROGRESS">进行中</SelectItem>
@@ -315,14 +312,14 @@ export default function TodoListPage() {
       </Card>
 
       {/* 任务列表 */}
-      <Card>
+      <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
         <CardHeader>
           <CardTitle>任务列表</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
                 <TableHead>任务名称</TableHead>
                 <TableHead>描述</TableHead>
                 <TableHead>状态</TableHead>
@@ -463,13 +460,13 @@ export default function TodoListPage() {
 
       {/* 新增/编辑对话框 */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent className="rounded-[24px] border-slate-200/80 p-0">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="border-b border-slate-100 px-6 py-5">
               {editingTodo ? '编辑任务' : '新增任务'}
             </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 px-6 py-5">
             <div className="grid gap-2">
               <Label htmlFor="title">任务名称</Label>
               <Input
@@ -490,11 +487,11 @@ export default function TodoListPage() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
+          <DialogFooter className="border-t border-slate-100 px-6 py-5">
+            <Button variant="outline" className="rounded-2xl" onClick={() => setModalOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleModalOk}>确定</Button>
+            <Button className="rounded-2xl bg-[#3B82F6] hover:bg-blue-600" onClick={handleModalOk}>确定</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

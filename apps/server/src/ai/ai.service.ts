@@ -181,6 +181,7 @@ export class AiService {
       let answerChunkCount = 0;
       let answerCharCount = 0;
       let answerText = '';
+      let thinkingText = '';
       let thinkingStarted = false;
       let thinkingFinished = false;
       const sqlAnswerPrompt = await this.promptService.resolvePrompt(
@@ -241,6 +242,7 @@ export class AiService {
           }
 
           thinkingStarted = true;
+          thinkingText += thinkingDelta;
           this.writeEvent(res, 'thinking_delta', {
             type: 'thinking_delta',
             delta: thinkingDelta,
@@ -283,6 +285,7 @@ export class AiService {
         requestId,
         question,
         answer: answerText,
+        thinking: thinkingText || null,
         sql: normalizedSql,
         rowCount: serializableRows.length,
         durationMs: Date.now() - startedAt,
@@ -326,6 +329,7 @@ export class AiService {
         requestId,
         question,
         answer: null,
+        thinking: null,
         sql: null,
         rowCount: 0,
         durationMs: Date.now() - startedAt,
@@ -513,6 +517,7 @@ export class AiService {
     requestId: string;
     question: string;
     answer: string | null;
+    thinking: string | null;
     sql: string | null;
     rowCount: number;
     durationMs: number;

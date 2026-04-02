@@ -29,7 +29,9 @@
         </svg>
       </button>
       <span class="topbar-title">文档问答</span>
-      <button class="switch-kb-btn" @click="openKnowledgeBasePicker">切换知识库</button>
+      <button class="switch-kb-btn" @click="openKnowledgeBasePicker">
+        {{ selectedKnowledgeBase?.name || '选择知识库' }}
+      </button>
     </div>
 
     <div v-if="drawerOpen" class="drawer-mask" @click="closeDrawer">
@@ -169,7 +171,20 @@
           </div>
         </div>
       </div>
-      <div v-else class="empty-box">选择知识库后开始提问，连续追问会在这里保留上下文。</div>
+      <div v-else class="empty-box">
+        <p class="empty-title">开始第一轮知识库问答</p>
+        <p class="empty-text">选择知识库后，你可以围绕同一份文档持续追问，引用来源会跟随每次回答展示。</p>
+        <div class="empty-examples">
+          <button
+            v-for="example in examples"
+            :key="example"
+            class="example-chip"
+            @click="question = example"
+          >
+            {{ example }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <button
@@ -184,10 +199,12 @@
     <div class="input-card">
       <div class="input-row">
         <textarea
+          ref="textareaRef"
           v-model="question"
           class="question-input"
           :placeholder="selectedKnowledgeBase ? `向“${selectedKnowledgeBase.name}”提问` : '请先选择知识库'"
           rows="1"
+          @input="handleInput"
           @keydown.enter.exact.prevent="handleAsk"
         />
         <button
@@ -204,7 +221,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { AiConversationMessage, AiConversationSession, KnowledgeBaseItem, RagSseEvent } from '@fullstack/shared'
 import { api, streamSse } from '@/utils/request'
 import { renderMarkdown } from '@/utils/markdown'
@@ -220,6 +237,7 @@ import {
 } from '@/utils/ai-conversation'
 
 const router = useRouter()
+const route = useRoute()
 const abortController = ref<AbortController | null>(null)
 const knowledgeBases = ref<KnowledgeBaseItem[]>([])
 const sessions = ref<AiConversationSession[]>([])
@@ -232,10 +250,23 @@ const knowledgeBasePickerOpen = ref(false)
 const showScrollToBottom = ref(false)
 const sessionKeyword = ref('')
 const knowledgeBaseKeyword = ref('')
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const examples = [
+  '这份制度里对请假流程怎么规定？',
+  '病假需要补充哪些材料？',
+  '如果员工迟到，会有什么处理方式？',
+]
 
 const currentSession = computed(
   () => sessions.value.find((item) => item.id === activeSessionId.value) || sessions.value[0] || null,
 )
+const visibleSessions = computed(() => {
+  if (!selectedId.value) {
+    return sessions.value.filter((session) => !session.knowledgeBaseId)
+  }
+
+  return sessions.value.filter((session) => session.knowledgeBaseId === selectedId.value)
+})
 const selectedKnowledgeBase = computed(
   () => knowledgeBases.value.find((item) => item.id === selectedId.value) || null,
 )
@@ -252,7 +283,7 @@ const filteredKnowledgeBases = computed(() => {
 
 const groupedSessions = computed(() => {
   const keyword = sessionKeyword.value.trim().toLowerCase()
-  const visibleSessions = sessions.value.filter((session) => {
+  const matchedSessions = visibleSessions.value.filter((session) => {
     if (!keyword) {
       return true
     }
@@ -264,7 +295,7 @@ const groupedSessions = computed(() => {
   })
 
   const groups = new Map<string, AiConversationSession[]>()
-  visibleSessions.forEach((session) => {
+  matchedSessions.forEach((session) => {
     const label = resolveSessionGroupLabel(session.updatedAt || session.createdAt)
     const currentGroup = groups.get(label) || []
     currentGroup.push(session)
@@ -335,7 +366,9 @@ async function fetchKnowledgeBases() {
     const filtered = data.filter((item) => item.documentCount > 0)
     knowledgeBases.value = filtered
 
-    const preferredId = currentSession.value?.knowledgeBaseId
+    const queryKnowledgeBaseId =
+      typeof route.query.knowledgeBaseId === 'string' ? route.query.knowledgeBaseId : ''
+    const preferredId = queryKnowledgeBaseId || currentSession.value?.knowledgeBaseId
     if (preferredId && filtered.some((item) => item.id === preferredId)) {
       selectedId.value = preferredId
       return
@@ -373,6 +406,10 @@ function closeDrawer() {
 function handleSelectSession(sessionId: string) {
   sessions.value = updateConversationSessionInList(sessions.value, sessionId, (session) => session)
   activeSessionId.value = sessionId
+  const matchedSession = sessions.value.find((session) => session.id === sessionId)
+  if (matchedSession?.knowledgeBaseId) {
+    selectedId.value = matchedSession.knowledgeBaseId
+  }
   persistSessions()
   closeDrawer()
 }
@@ -416,20 +453,44 @@ function closeKnowledgeBasePicker() {
 }
 
 function handleKnowledgeBaseChange() {
-  if (!currentSession.value) {
+  if (!selectedId.value) {
     return
   }
 
-  updateSession(currentSession.value.id, (session) => ({
-    ...session,
+  const matchedSession = sessions.value.find((session) => session.knowledgeBaseId === selectedId.value)
+  if (matchedSession) {
+    activeSessionId.value = matchedSession.id
+    persistSessions()
+    return
+  }
+
+  const nextSession = createConversationSession('knowledge_base', {
     knowledgeBaseId: selectedId.value,
-  }))
+  })
+  sessions.value = [nextSession, ...sessions.value]
+  activeSessionId.value = nextSession.id
+  question.value = ''
+  persistSessions()
 }
 
 function selectKnowledgeBaseAndClose(knowledgeBaseId: string) {
   selectedId.value = knowledgeBaseId
   handleKnowledgeBaseChange()
   closeKnowledgeBasePicker()
+}
+
+function resizeTextarea() {
+  if (!textareaRef.value) {
+    return
+  }
+
+  textareaRef.value.style.height = 'auto'
+  const nextHeight = Math.min(textareaRef.value.scrollHeight, 132)
+  textareaRef.value.style.height = `${Math.max(nextHeight, 46)}px`
+}
+
+function handleInput() {
+  resizeTextarea()
 }
 
 // 知识库问答也走聊天流，但每个会话额外绑定一个 knowledgeBaseId，方便恢复时自动选中。
@@ -477,6 +538,7 @@ async function handleAsk() {
   }))
 
   question.value = ''
+  resizeTextarea()
   asking.value = true
   abortController.value = new AbortController()
 
@@ -607,6 +669,17 @@ initializeSessions()
 void fetchKnowledgeBases()
 
 onMounted(() => {
+  if (typeof route.query.sessionId === 'string') {
+    const matchedSession = sessions.value.find((session) => session.id === route.query.sessionId)
+    if (matchedSession) {
+      activeSessionId.value = matchedSession.id
+      if (matchedSession.knowledgeBaseId) {
+        selectedId.value = matchedSession.knowledgeBaseId
+      }
+    }
+  }
+
+  resizeTextarea()
   updateScrollToBottomVisibility()
   window.addEventListener('scroll', updateScrollToBottomVisibility, { passive: true })
   window.addEventListener('resize', updateScrollToBottomVisibility)
@@ -616,6 +689,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateScrollToBottomVisibility)
   window.removeEventListener('resize', updateScrollToBottomVisibility)
 })
+
+watch(
+  question,
+  async () => {
+    await nextTick()
+    resizeTextarea()
+  },
+)
 
 watch(
   () => currentSession.value?.knowledgeBaseId,
@@ -630,6 +711,32 @@ watch(
     }
   },
   { immediate: true },
+)
+
+watch(
+  () => selectedId.value,
+  (nextKnowledgeBaseId) => {
+    if (!nextKnowledgeBaseId) {
+      return
+    }
+
+    if (currentSession.value?.knowledgeBaseId === nextKnowledgeBaseId) {
+      return
+    }
+
+    const matchedSession = sessions.value.find((session) => session.knowledgeBaseId === nextKnowledgeBaseId)
+    if (matchedSession) {
+      activeSessionId.value = matchedSession.id
+      return
+    }
+
+    const nextSession = createConversationSession('knowledge_base', {
+      knowledgeBaseId: nextKnowledgeBaseId,
+    })
+    sessions.value = [nextSession, ...sessions.value]
+    activeSessionId.value = nextSession.id
+    persistSessions()
+  },
 )
 
 watch(
@@ -851,15 +958,17 @@ watch(
 }
 
 .drawer-item {
+  position: relative;
   width: 100%;
   border: 1px solid rgba(226, 232, 240, 0.88);
-  border-radius: 16px;
+  border-radius: 18px;
   background: #fff;
-  padding: 10px 12px;
-  min-height: 54px;
+  padding: 12px 12px 12px 14px;
+  min-height: 60px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
 
 .drawer-item-row {
@@ -870,8 +979,20 @@ watch(
 }
 
 .drawer-item-active {
-  border-color: rgba(79, 121, 238, 0.28);
+  border-color: rgba(79, 121, 238, 0.24);
   background: rgba(242, 247, 255, 0.98);
+  box-shadow: 0 12px 26px rgba(79, 121, 238, 0.12);
+}
+
+.drawer-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 999px;
+  background: #4b77ed;
 }
 
 .drawer-item-main {
@@ -1023,11 +1144,11 @@ watch(
   border: none;
   background: transparent;
   min-height: 46px;
-  max-height: 46px;
+  max-height: 132px;
   resize: none;
   padding-top: 11px;
   padding-bottom: 11px;
-  overflow: hidden;
+  overflow-y: auto;
   padding-left: 8px;
   padding-right: 0;
 }
@@ -1043,6 +1164,38 @@ watch(
   margin-top: 0;
   padding: 28px 12px 16px;
   text-align: center;
+}
+
+.empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.empty-text {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.example-chip {
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.08);
+  padding: 9px 14px;
+  font-size: 12px;
+  color: #35517d;
 }
 
 .picker-helper {

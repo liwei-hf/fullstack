@@ -1,6 +1,6 @@
 @echo off
 REM =============================================================================
-REM 初始化启动脚本 - Fullstack Interview Project (Windows 版本)
+REM 初始化启动脚本 - Fullstack AI Platform (Windows 版本)
 REM =============================================================================
 REM 当前脚本对应最新项目结构：
 REM 1. apps/server   -> NestJS 后端（默认 3334）
@@ -14,7 +14,7 @@ setlocal enabledelayedexpansion
 set PROJECT_ROOT=%~dp0
 
 echo ============================================
-echo    Fullstack Interview Project - 初始化脚本
+echo    Fullstack AI Platform - 初始化脚本
 echo ============================================
 echo.
 

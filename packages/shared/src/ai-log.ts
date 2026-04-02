@@ -24,3 +24,14 @@ export interface AiLogItem {
     name: string;
   } | null;
 }
+
+/**
+ * AI 问答日志详情
+ *
+ * 列表页只需要摘要字段，但详情抽屉需要拿到 SQL 或 think 这类补充内容，
+ * 所以这里额外定义一份详情模型，避免列表接口越来越重。
+ */
+export interface AiLogDetailItem extends AiLogItem {
+  sql: string | null;
+  thinking: string | null;
+}

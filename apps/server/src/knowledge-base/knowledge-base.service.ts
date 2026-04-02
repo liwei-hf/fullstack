@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  KnowledgeBaseAnswerStyle,
+  KnowledgeBaseCitationMode,
   KnowledgeBaseDetail,
   KnowledgeBaseDocumentItem,
   KnowledgeBaseItem,
@@ -68,6 +70,12 @@ export class KnowledgeBaseService {
       createdBy: {
         id: knowledgeBase.createdBy.id,
         username: knowledgeBase.createdBy.username,
+      },
+      promptConfig: {
+        systemPromptOverride: knowledgeBase.systemPromptOverride,
+        answerStyle: this.fromPersistenceAnswerStyle(knowledgeBase.answerStyle),
+        citationMode: this.fromPersistenceCitationMode(knowledgeBase.citationMode),
+        strictMode: knowledgeBase.strictMode,
       },
     };
   }
@@ -138,10 +146,71 @@ export class KnowledgeBaseService {
         id: knowledgeBase.createdBy.id,
         username: knowledgeBase.createdBy.username,
       },
+      promptConfig: {
+        systemPromptOverride: knowledgeBase.systemPromptOverride,
+        answerStyle: this.fromPersistenceAnswerStyle(knowledgeBase.answerStyle),
+        citationMode: this.fromPersistenceCitationMode(knowledgeBase.citationMode),
+        strictMode: knowledgeBase.strictMode,
+      },
     };
 
     await this.cacheService.setKnowledgeBaseDetail(id, detail);
     return detail;
+  }
+
+  /**
+   * 更新知识库基础信息与问答配置
+   *
+   * 这里把知识库级 Prompt 配置放进知识库表里，
+   * 让同一套检索链路可以根据不同知识库切换回答风格。
+   */
+  async updateKnowledgeBase(
+    id: string,
+    dto: {
+      name?: string;
+      description?: string;
+      systemPromptOverride?: string;
+      answerStyle?: KnowledgeBaseAnswerStyle;
+      citationMode?: KnowledgeBaseCitationMode;
+      strictMode?: boolean;
+    },
+    user: AuthenticatedRequestUser,
+  ): Promise<KnowledgeBaseDetail> {
+    this.ensureAdmin(user);
+
+    const current = await this.prisma.knowledgeBase.findUnique({
+      where: { id },
+    });
+
+    if (!current) {
+      throw new NotFoundException('知识库不存在');
+    }
+
+    const trimmedName = dto.name?.trim();
+    if (trimmedName && trimmedName !== current.name) {
+      const exists = await this.prisma.knowledgeBase.findUnique({
+        where: { name: trimmedName },
+      });
+      if (exists) {
+        throw new ConflictException('知识库名称已存在');
+      }
+    }
+
+    await this.prisma.knowledgeBase.update({
+      where: { id },
+      data: {
+        name: trimmedName || undefined,
+        description: dto.description !== undefined ? dto.description?.trim() || null : undefined,
+        systemPromptOverride:
+          dto.systemPromptOverride !== undefined ? dto.systemPromptOverride.trim() || null : undefined,
+        answerStyle: dto.answerStyle ? this.toPersistenceAnswerStyle(dto.answerStyle) : undefined,
+        citationMode: dto.citationMode ? this.toPersistenceCitationMode(dto.citationMode) : undefined,
+        strictMode: dto.strictMode,
+      },
+    });
+
+    await this.cacheService.invalidateKnowledgeBase(id);
+    return this.getKnowledgeBase(id);
   }
 
   // 当前版本只允许删除空知识库，避免把对象存储和向量清理耦合进一次删除里。
@@ -244,5 +313,21 @@ export class KnowledgeBaseService {
     if (user.role !== 'admin') {
       throw new ForbiddenException('只有管理员可以执行该操作');
     }
+  }
+
+  private fromPersistenceAnswerStyle(style: 'CONCISE' | 'BALANCED' | 'DETAILED'): KnowledgeBaseAnswerStyle {
+    return style.toLowerCase() as KnowledgeBaseAnswerStyle;
+  }
+
+  private toPersistenceAnswerStyle(style: KnowledgeBaseAnswerStyle) {
+    return style.toUpperCase() as 'CONCISE' | 'BALANCED' | 'DETAILED';
+  }
+
+  private fromPersistenceCitationMode(mode: 'REQUIRED' | 'OPTIONAL' | 'HIDDEN'): KnowledgeBaseCitationMode {
+    return mode.toLowerCase() as KnowledgeBaseCitationMode;
+  }
+
+  private toPersistenceCitationMode(mode: KnowledgeBaseCitationMode) {
+    return mode.toUpperCase() as 'REQUIRED' | 'OPTIONAL' | 'HIDDEN';
   }
 }

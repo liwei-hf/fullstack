@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# 初始化启动脚本 - Fullstack Interview Project
+# 初始化启动脚本 - Fullstack AI Platform
 # =============================================================================
 # 当前脚本对应最新项目结构：
 # 1. apps/server   -> NestJS 后端（默认 3334）
@@ -50,7 +50,7 @@ free_port() {
 }
 
 echo -e "${BLUE}============================================${NC}"
-echo -e "${BLUE}   Fullstack Interview Project - 初始化脚本${NC}"
+echo -e "${BLUE}   Fullstack AI Platform - 初始化脚本${NC}"
 echo -e "${BLUE}============================================${NC}"
 echo ""
 

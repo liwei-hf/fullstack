@@ -74,6 +74,20 @@ enum DocumentChunkStrategy {
   HEADING
 }
 
+// 知识库回答风格
+enum KnowledgeBaseAnswerStyle {
+  CONCISE
+  BALANCED
+  DETAILED
+}
+
+// 知识库引用模式
+enum KnowledgeBaseCitationMode {
+  REQUIRED
+  OPTIONAL
+  HIDDEN
+}
+
 // ZIP 批量导入任务状态
 enum KnowledgeBaseImportJobStatus {
   UPLOADED
@@ -190,14 +204,21 @@ model KnowledgeBase {
   name          String     @unique
   description   String?
   createdById   String
+  promptVersionId String?
+  systemPromptOverride String?
+  answerStyle   KnowledgeBaseAnswerStyle  @default(BALANCED)
+  citationMode  KnowledgeBaseCitationMode @default(REQUIRED)
+  strictMode    Boolean    @default(true)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   createdBy     User       @relation("KnowledgeBaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  promptVersion PromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
   documents     Document[]
   qaLogs        QaLog[]
   importJobs    KnowledgeBaseImportJob[]
 
   @@index([createdById])
+  @@index([promptVersionId])
   @@index([createdAt])
 }
 
@@ -274,6 +295,7 @@ model QaLog {
   requestId       String?
   question        String
   answer          String?
+  thinking        String?
   sourceCount     Int           @default(0)
   durationMs      Int?
   success         Boolean       @default(true)
@@ -294,6 +316,7 @@ model AiSqlLog {
   requestId    String?
   question     String
   answer       String?
+  thinking     String?
   sql          String?
   rowCount     Int      @default(0)
   durationMs   Int?
@@ -313,6 +336,9 @@ model PromptTemplate {
   name        String
   description String?
   scene       String
+  systemPrompt       String   @default("")
+  userPromptTemplate String   @default("")
+  variablesSchema    Json?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   versions    PromptVersion[]
@@ -335,6 +361,7 @@ model PromptVersion {
   template           PromptTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
   createdBy          User                @relation("PromptVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
   testLogs           PromptTestLog[]
+  knowledgeBases     KnowledgeBase[]
 
   @@unique([templateId, version])
   @@index([templateId, status])

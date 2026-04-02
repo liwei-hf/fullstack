@@ -1,10 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AiConversationMessage, AiConversationSession, KnowledgeBaseDetail, KnowledgeBaseItem, RagSseEvent } from '@fullstack/shared';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Toaster } from '@/components/ui/toaster';
+import { ExpandablePanel } from '@/components/expandable-panel';
+import { PageHeader } from '@/components/page-header';
 import { api } from '@/utils/api';
 import {
   createConversationMessage,
@@ -28,6 +38,7 @@ export default function KnowledgeBaseChatPage() {
   const { toast } = useToast();
   const abortRef = useRef<AbortController | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [detail, setDetail] = useState<KnowledgeBaseDetail | null>(null);
@@ -47,6 +58,17 @@ export default function KnowledgeBaseChatPage() {
     () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? null,
     [activeSessionId, sessions],
   );
+  const visibleSessions = useMemo(() => {
+    if (!selectedId) {
+      return sessions.filter((session) => !session.knowledgeBaseId);
+    }
+
+    return sessions.filter((session) => session.knowledgeBaseId === selectedId);
+  }, [selectedId, sessions]);
+  const selectedItem = useMemo(
+    () => knowledgeBases.find((item) => item.id === selectedId) ?? null,
+    [knowledgeBases, selectedId],
+  );
 
   useEffect(() => {
     saveConversationSessions('knowledge_base', sessions);
@@ -61,17 +83,35 @@ export default function KnowledgeBaseChatPage() {
     }
   }, [currentSession, sessions]);
 
-  useEffect(() => {
+  const latestMessageSignature = useMemo(() => {
+    const lastMessage = currentSession?.messages[currentSession.messages.length - 1];
+    if (!lastMessage) {
+      return '';
+    }
+
+    return [
+      lastMessage.id,
+      lastMessage.content,
+      lastMessage.thinking,
+      lastMessage.loadingMessage,
+      lastMessage.status,
+      lastMessage.errorMessage,
+      lastMessage.sources?.length || 0,
+    ].join('|');
+  }, [currentSession]);
+
+  useLayoutEffect(() => {
     const viewport = messageViewportRef.current;
-    if (!viewport) {
+    const end = messagesEndRef.current;
+    if (!viewport || !end) {
       return;
     }
 
-    viewport.scrollTo({
-      top: viewport.scrollHeight,
-      behavior: 'smooth',
+    end.scrollIntoView({
+      block: 'end',
+      behavior: asking ? 'auto' : 'smooth',
     });
-  }, [currentSession?.messages]);
+  }, [asking, latestMessageSignature]);
 
   const updateSession = (sessionId: string, updater: (session: AiConversationSession) => AiConversationSession) => {
     setSessions((previous) => updateConversationSessionInList(previous, sessionId, updater));
@@ -186,13 +226,41 @@ export default function KnowledgeBaseChatPage() {
 
   const handleKnowledgeBaseChange = (nextKnowledgeBaseId: string) => {
     setSelectedId(nextKnowledgeBaseId);
-    if (currentSession) {
-      updateSession(currentSession.id, (session) => ({
-        ...session,
-        knowledgeBaseId: nextKnowledgeBaseId,
-      }));
+    const matchedSession = sessions.find((session) => session.knowledgeBaseId === nextKnowledgeBaseId);
+    if (matchedSession) {
+      handleSelectSession(matchedSession.id);
+      return;
     }
+
+    const nextSession = createConversationSession('knowledge_base', {
+      knowledgeBaseId: nextKnowledgeBaseId,
+    });
+    setSessions((previous) => [nextSession, ...previous]);
+    setActiveSessionId(nextSession.id);
+    setQuestion('');
   };
+
+  useEffect(() => {
+    if (!selectedId) {
+      return;
+    }
+
+    if (currentSession?.knowledgeBaseId === selectedId) {
+      return;
+    }
+
+    const matchedSession = sessions.find((session) => session.knowledgeBaseId === selectedId);
+    if (matchedSession) {
+      setActiveSessionId(matchedSession.id);
+      return;
+    }
+
+    const nextSession = createConversationSession('knowledge_base', {
+      knowledgeBaseId: selectedId,
+    });
+    setSessions((previous) => [nextSession, ...previous]);
+    setActiveSessionId(nextSession.id);
+  }, [currentSession?.knowledgeBaseId, selectedId, sessions]);
 
   const handleAsk = async () => {
     if (asking) {
@@ -332,24 +400,45 @@ export default function KnowledgeBaseChatPage() {
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
-        <div className="space-y-6">
-          <Card className="h-fit">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle>会话列表</CardTitle>
-                <Button type="button" variant="outline" size="sm" onClick={handleCreateSession}>
-                  新会话
-                </Button>
+      <div className="space-y-6">
+        <PageHeader
+          title="知识库问答"
+          description="围绕同一份知识库连续追问，保留 Think、答案正文和引用来源，适合作为知识型 AI 助手的核心交互界面。"
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={selectedId} onValueChange={handleKnowledgeBaseChange}>
+                <SelectTrigger className="h-11 min-w-[240px] rounded-2xl border-slate-200 bg-white px-4 text-sm shadow-none focus:ring-blue-200">
+                  <SelectValue placeholder={knowledgeBases.length ? '选择知识库' : '暂无可问答知识库'} />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-slate-200">
+                  {knowledgeBases.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={handleCreateSession} className="h-11 rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
+                新建会话
+              </Button>
+            </div>
+          }
+        />
+
+        <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
+          <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
+            <CardContent className="space-y-4 p-5">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-slate-900">会话列表</p>
+                <p className="text-xs leading-5 text-slate-500">当前仅展示所选知识库下的历史会话。</p>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {sessions.map((session) => (
+
+              {visibleSessions.map((session) => (
                 <div
                   key={session.id}
-                  className={`rounded-2xl border p-3 transition ${
+                  className={`rounded-[20px] border p-3 transition ${
                     session.id === currentSession?.id
-                      ? 'border-teal-500 bg-teal-50'
+                      ? 'border-blue-200 bg-blue-50/70'
                       : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
@@ -378,164 +467,170 @@ export default function KnowledgeBaseChatPage() {
                   </div>
                 </div>
               ))}
-            </CardContent>
-          </Card>
 
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>选择知识库</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {loadingKnowledgeBases && <p className="text-sm text-muted-foreground">加载中...</p>}
-              {!loadingKnowledgeBases && knowledgeBases.length === 0 && (
-                <p className="text-sm text-muted-foreground">
+              {!loadingKnowledgeBases && knowledgeBases.length === 0 ? (
+                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                   还没有已上传文档的知识库，先去“知识库管理”上传文档后再来问答。
-                </p>
-              )}
-              {knowledgeBases.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleKnowledgeBaseChange(item.id)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    selectedId === item.id
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-gray-900">{item.name}</p>
-                      <p className="mt-1 text-sm text-gray-500">{item.description || '暂无描述'}</p>
-                    </div>
-                    <Badge variant="outline">
-                      {item.readyDocumentCount}/{item.documentCount}
-                    </Badge>
-                  </div>
-                </button>
-              ))}
+                </div>
+              ) : null}
+
+              {visibleSessions.length === 0 && knowledgeBases.length > 0 ? (
+                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  当前知识库还没有历史会话，开始第一轮提问后会自动建立会话。
+                </div>
+              ) : null}
             </CardContent>
           </Card>
-        </div>
 
-        <Card className="min-h-[720px]">
-          <CardHeader className="border-b">
-            <CardTitle>{detail?.name || currentSession?.title || '知识库问答'}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {detail?.description || '当前页面只负责基于知识库内容进行问答。'}
-            </p>
-          </CardHeader>
-          <CardContent className="flex min-h-[640px] flex-col gap-4 p-0">
-            <div ref={messageViewportRef} className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+          <div className="flex min-h-[760px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-slate-100 px-7 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {detail?.name || currentSession?.title || '知识库问答'}
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                    {detail?.description || '当前页面只负责基于知识库内容进行问答。'}
+                  </p>
+                </div>
+                {selectedItem ? (
+                  <Badge variant="outline" className="rounded-full border-blue-100 bg-blue-50 text-blue-600">
+                    文档 {selectedItem.readyDocumentCount}/{selectedItem.documentCount}
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+
+            <div ref={messageViewportRef} className="flex-1 space-y-6 overflow-y-auto px-7 py-7">
               {currentSession?.messages.length ? (
                 currentSession.messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-3xl px-4 py-3 shadow-sm ${
-                        message.role === 'user'
-                          ? 'bg-slate-900 text-white'
-                          : 'border border-slate-200 bg-white text-slate-900'
-                      }`}
-                    >
-                      {message.role === 'assistant' && message.thinking ? (
-                        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2">
-                          <button
-                            type="button"
-                            className="mb-2 flex items-center gap-2 text-[12px] text-amber-700"
-                            onClick={() =>
+                  <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {message.role === 'user' ? (
+                      <div className="max-w-[72%] rounded-[24px] bg-blue-500 px-5 py-4 text-sm leading-7 text-white shadow-[0_12px_24px_rgba(59,130,246,0.16)]">
+                        {message.content}
+                      </div>
+                    ) : (
+                      <div className="max-w-[86%] space-y-3 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,#FFFFFF_0%,#F9FBFF_100%)] p-4">
+                        {message.thinking ? (
+                          <ExpandablePanel
+                            title="Think"
+                            description="默认折叠，仅在模型返回思考内容时显示。"
+                            expanded={message.thinkingExpanded !== false}
+                            onToggle={() =>
                               updateMessage(currentSession.id, message.id, (current) => ({
                                 ...current,
                                 thinkingExpanded: !current.thinkingExpanded,
                               }))
                             }
                           >
-                            <span>{message.thinkingExpanded ? '▾' : '▸'}</span>
-                            <span>Think</span>
-                          </button>
-                          {message.thinkingExpanded !== false && (
                             <div
-                              className="markdown-body text-[13px] leading-6 text-amber-900 opacity-80"
+                              className="markdown-body text-sm leading-7 text-slate-600"
                               dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking) }}
                             />
-                          )}
-                        </div>
-                      ) : null}
+                          </ExpandablePanel>
+                        ) : null}
 
-                      {message.content ? (
-                        <div
-                          className="markdown-body text-[15px] leading-7"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
-                        />
-                      ) : message.role === 'assistant' && message.status === 'streaming' ? (
-                        <div className="flex items-center gap-3 text-sm text-slate-500">
-                          <span className="loading-dots" aria-hidden="true">
-                            <span />
-                            <span />
-                            <span />
-                          </span>
-                          <span>{message.loadingMessage || '正在组织答案...'}</span>
-                        </div>
-                      ) : null}
+                        {message.content ? (
+                          <div
+                            className="markdown-body px-1 text-[15px] leading-8 text-slate-800"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+                          />
+                        ) : message.status === 'streaming' ? (
+                          <div className="flex items-center gap-3 rounded-[20px] bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                            <span className="loading-dots" aria-hidden="true">
+                              <span />
+                              <span />
+                              <span />
+                            </span>
+                            <span>{message.loadingMessage || '正在组织答案...'}</span>
+                          </div>
+                        ) : null}
 
-                      {message.role === 'assistant' && message.errorMessage ? (
-                        <p className="mt-3 text-sm text-rose-600">{message.errorMessage}</p>
-                      ) : null}
+                        {message.errorMessage ? (
+                          <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{message.errorMessage}</p>
+                        ) : null}
 
-                      {message.role === 'assistant' && message.sources?.length ? (
-                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                          <button
-                            type="button"
-                            className="mb-2 flex items-center gap-2 text-[12px] text-slate-500"
-                            onClick={() =>
+                        {message.sources?.length ? (
+                          <ExpandablePanel
+                            title="引用来源"
+                            description="根据命中的文档片段给出引用，方便追溯回答依据。"
+                            expanded={message.sourcesExpanded !== false}
+                            onToggle={() =>
                               updateMessage(currentSession.id, message.id, (current) => ({
                                 ...current,
                                 sourcesExpanded: !current.sourcesExpanded,
                               }))
                             }
+                            countLabel={`${message.sources.length} 条`}
                           >
-                            <span>{message.sourcesExpanded ? '▾' : '▸'}</span>
-                            <span>引用来源</span>
-                          </button>
-                          {message.sourcesExpanded ? (
-                            <div className="space-y-3">
+                            <div className="grid gap-3">
                               {message.sources.map((source) => (
-                                <div key={source.chunkId} className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div key={source.chunkId} className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 p-4">
                                   <p className="text-sm font-medium text-slate-900">{source.documentName}</p>
-                                  <p className="mt-1 text-sm leading-6 text-slate-600">{source.snippet}</p>
+                                  <p className="mt-2 text-sm leading-6 text-slate-600">{source.snippet}</p>
                                 </div>
                               ))}
                             </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
+                          </ExpandablePanel>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (
-                <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center text-slate-500">
-                  选择知识库后开始提问，连续追问会在这里保留上下文。
+                <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-8 py-16 text-center">
+                  <p className="text-base font-medium text-slate-700">从当前知识库开始第一轮提问</p>
+                  <p className="mt-2 text-sm leading-7 text-slate-500">连续追问会保留在当前会话里，适合围绕同一份知识内容逐步深入。</p>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t px-6 py-5">
+            <div className="border-t border-slate-100 bg-white px-7 py-5">
+              <div className="mb-3 flex flex-wrap gap-2">
+                {['请解释当前知识库的核心内容', '列出 3 条关键规定', '给我一个简短总结'].map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => setQuestion(example)}
+                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition hover:border-slate-300 hover:bg-white"
+                  >
+                    {example}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentSession) {
+                      return;
+                    }
+                    updateSession(currentSession.id, (session) => ({
+                      ...session,
+                      messages: [],
+                      lastMessagePreview: '',
+                      updatedAt: new Date().toISOString(),
+                    }));
+                  }}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 transition hover:border-slate-300"
+                >
+                  清空上下文
+                </button>
+              </div>
+
               <div className="flex items-end gap-3">
-                <textarea
+                <Textarea
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
-                  placeholder={selectedId ? '请输入你的问题' : '请先选择知识库'}
-                  className="min-h-[110px] flex-1 rounded-2xl border border-input bg-background px-4 py-3 text-sm"
+                  placeholder={selectedId ? '请输入你的问题，Enter 发送，Shift+Enter 换行' : '请先选择知识库'}
+                  className="min-h-[108px] flex-1 rounded-[24px] border-slate-200 bg-slate-50/70 px-4 py-3 text-sm leading-7 focus-visible:ring-blue-200"
                 />
-                <Button onClick={handleAsk} className="min-w-[96px]">
+                <Button onClick={handleAsk} className="h-12 min-w-[112px] rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
                   {asking ? '停止' : '发送'}
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
       <Toaster />
       <style>{`

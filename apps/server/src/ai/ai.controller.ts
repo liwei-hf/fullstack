@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { AiLogType } from '@fullstack/shared';
 import { CurrentUser } from '../common/decorators/current-user';
@@ -25,6 +25,21 @@ export class AiController {
       data: await this.aiLogService.listCurrentUserLogs({
         userId: user.sub,
         type,
+      }),
+    };
+  }
+
+  @Get('logs/:type/:id')
+  async getLogDetail(
+    @CurrentUser() user: { sub: string; role: 'admin' | 'user'; status: string },
+    @Param('type') type: AiLogType,
+    @Param('id') id: string,
+  ) {
+    return {
+      data: await this.aiLogService.getCurrentUserLogDetail({
+        id,
+        type,
+        userId: user.sub,
       }),
     };
   }

@@ -2,9 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiSessionMemoryService } from '../ai/ai-session-memory.service';
-import { PromptService } from '../ai/prompt.service';
-import { buildKnowledgeBaseAnswerVariables } from '../ai/prompt-defaults.registry';
 import { KnowledgeBaseModelService } from './knowledge-base-model.service';
+import { KnowledgeBasePromptResolverService } from './knowledge-base-prompt-resolver.service';
 import { KnowledgeBaseRetrievalService } from './knowledge-base-retrieval.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import type { AuthenticatedRequestUser } from './knowledge-base.types';
@@ -25,7 +24,7 @@ export class KnowledgeBaseChatService {
     private readonly retrievalService: KnowledgeBaseRetrievalService,
     private readonly modelService: KnowledgeBaseModelService,
     private readonly sessionMemoryService: AiSessionMemoryService,
-    private readonly promptService: PromptService,
+    private readonly promptResolverService: KnowledgeBasePromptResolverService,
   ) {}
 
   /**
@@ -80,7 +79,7 @@ export class KnowledgeBaseChatService {
       });
 
       const knowledgeBaseCheckStartedAt = Date.now();
-      await this.knowledgeBaseService.ensureKnowledgeBaseExists(knowledgeBaseId);
+      const knowledgeBase = await this.knowledgeBaseService.ensureKnowledgeBaseExists(knowledgeBaseId);
       const knowledgeBaseCheckDurationMs = Date.now() - knowledgeBaseCheckStartedAt;
 
       const readyDocumentsCheckStartedAt = Date.now();
@@ -104,6 +103,7 @@ export class KnowledgeBaseChatService {
           requestId,
           question,
           answer: '当前知识库还没有可用文档，请先在管理端上传并处理完成后再提问。',
+          thinking: null,
           sourceCount: 0,
           durationMs: Date.now() - startedAt,
           success: false,
@@ -148,6 +148,7 @@ export class KnowledgeBaseChatService {
           requestId,
           question,
           answer: '当前知识库里还没有可命中的内容，可以先上传文档或换个问法再试。',
+          thinking: null,
           sourceCount: 0,
           durationMs: Date.now() - startedAt,
           success: false,
@@ -187,16 +188,19 @@ export class KnowledgeBaseChatService {
       const llmStartedAt = Date.now();
       const chatModelInfo = this.modelService.getChatModelInfo();
       const model = this.modelService.createChatModel();
-      // 这里先解析当前实际生效的 Prompt 版本，再把结果交给聊天模型，
-      // 这样后台发布 Prompt 新版本后，知识库问答链路会立刻跟着切换。
-      const resolvedPrompt = await this.promptService.resolvePrompt(
-        'knowledge_base_answer',
-        buildKnowledgeBaseAnswerVariables({
-          question,
-          contextText: retrieved.contextText,
-          historyText,
-        }),
-      );
+      // 这里先解析当前实际生效的知识库问答模板，再叠加知识库自己的补充提示词，
+      // 这样后台调整 Prompt 后，知识库问答链路会立刻跟着切换。
+      const resolvedPrompt = await this.promptResolverService.resolveKnowledgeBaseAnswerPrompt({
+        promptConfig: {
+          systemPromptOverride: knowledgeBase.systemPromptOverride,
+          answerStyle: knowledgeBase.answerStyle.toLowerCase() as 'concise' | 'balanced' | 'detailed',
+          citationMode: knowledgeBase.citationMode.toLowerCase() as 'required' | 'optional' | 'hidden',
+          strictMode: knowledgeBase.strictMode,
+        },
+        question,
+        contextText: retrieved.contextText,
+        historyText,
+      });
       this.writeEvent(res, 'loading', {
         type: 'loading',
         stage: 'generating_answer',
@@ -214,6 +218,9 @@ export class KnowledgeBaseChatService {
           stage: 'rag_answer_generation_started',
           chatModel: chatModelInfo.model,
           chatProvider: chatModelInfo.provider,
+          answerStyle: knowledgeBase.answerStyle,
+          citationMode: knowledgeBase.citationMode,
+          strictMode: knowledgeBase.strictMode,
           llmRequestDurationMs,
           sourceCount: retrieved.sources.length,
           retrievalMetrics: retrieved.metrics,
@@ -221,6 +228,7 @@ export class KnowledgeBaseChatService {
       );
 
       let answer = '';
+      let thinkingText = '';
       let answerChunkCount = 0;
       let firstChunkDurationMs: number | null = null;
       let thinkingStarted = false;
@@ -230,6 +238,7 @@ export class KnowledgeBaseChatService {
         const thinkingDelta = this.extractThinking(chunk);
         if (thinkingDelta) {
           thinkingStarted = true;
+          thinkingText += thinkingDelta;
           this.writeEvent(res, 'thinking_delta', {
             type: 'thinking_delta',
             delta: thinkingDelta,
@@ -280,6 +289,7 @@ export class KnowledgeBaseChatService {
         requestId,
         question,
         answer,
+        thinking: thinkingText || null,
         sourceCount: retrieved.sources.length,
         durationMs: Date.now() - startedAt,
         success: true,
@@ -325,6 +335,7 @@ export class KnowledgeBaseChatService {
         requestId,
         question,
         answer: null,
+        thinking: null,
         sourceCount: 0,
         durationMs: Date.now() - startedAt,
         success: false,
@@ -465,6 +476,7 @@ export class KnowledgeBaseChatService {
     requestId: string;
     question: string;
     answer: string | null;
+    thinking: string | null;
     sourceCount: number;
     durationMs: number;
     success: boolean;

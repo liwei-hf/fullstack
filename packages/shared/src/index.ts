@@ -242,6 +242,7 @@ export {
 export type {
   AiLogType,
   AiLogItem,
+  AiLogDetailItem,
 } from './ai-log';
 
 export {
@@ -253,12 +254,16 @@ export {
 export type {
   KnowledgeBaseStatus,
   KnowledgeBaseChunkStrategy,
+  KnowledgeBaseAnswerStyle,
+  KnowledgeBaseCitationMode,
+  KnowledgeBasePromptConfig,
   KnowledgeBaseItem,
   KnowledgeBaseDetail,
   KnowledgeBaseDocumentItem,
   KnowledgeBaseImportJobStatus,
   KnowledgeBaseImportJobItem,
   CreateKnowledgeBaseRequest,
+  UpdateKnowledgeBaseRequest,
   UploadKnowledgeBaseDocumentRequest,
   ImportKnowledgeBaseZipRequest,
   RagChatStreamRequest,
@@ -269,6 +274,8 @@ export type {
 export {
   KNOWLEDGE_BASE_STATUSES,
   KNOWLEDGE_BASE_CHUNK_STRATEGIES,
+  KNOWLEDGE_BASE_ANSWER_STYLES,
+  KNOWLEDGE_BASE_CITATION_MODES,
   KNOWLEDGE_BASE_IMPORT_JOB_STATUSES,
 } from './rag';
 
@@ -277,12 +284,9 @@ export {
 export type {
   PromptTemplateCode,
   PromptScene,
-  PromptVersionStatus,
   PromptTemplateListItem,
   PromptTemplateDetail,
-  PromptVersionItem,
-  CreatePromptVersionRequest,
-  UpdatePromptVersionRequest,
+  UpdatePromptTemplateRequest,
   PromptTestRequest,
   PromptTestResult,
   PromptTestLogItem,
@@ -291,5 +295,4 @@ export type {
 export {
   PROMPT_TEMPLATE_CODES,
   PROMPT_SCENES,
-  PROMPT_VERSION_STATUSES,
 } from './prompt';

@@ -34,7 +34,8 @@ export class KnowledgeBaseQueueService implements OnModuleDestroy {
       KNOWLEDGE_BASE_QUEUE_JOB_NAME,
       { documentId },
       {
-        jobId: `document:${documentId}`,
+        // BullMQ 5.x 不允许自定义 jobId 中包含冒号，统一改成短横线分隔。
+        jobId: `document-${documentId}`,
         attempts: 3,
         backoff: {
           type: 'exponential',
@@ -58,7 +59,8 @@ export class KnowledgeBaseQueueService implements OnModuleDestroy {
       KNOWLEDGE_BASE_IMPORT_ZIP_QUEUE_JOB_NAME,
       { importJobId },
       {
-        jobId: `import:${importJobId}`,
+        // ZIP 导入任务同样避免使用冒号，保持和文档任务一致的命名规则。
+        jobId: `import-${importJobId}`,
         attempts: 2,
         backoff: {
           type: 'exponential',

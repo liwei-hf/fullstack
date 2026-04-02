@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -9,14 +8,12 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { ChatOpenAI } from '@langchain/openai';
 import type {
-  CreatePromptVersionRequest,
   PromptTemplateCode,
   PromptTemplateDetail,
   PromptTemplateListItem,
   PromptTestLogItem,
   PromptTestResult,
-  PromptVersionItem,
-  UpdatePromptVersionRequest,
+  UpdatePromptTemplateRequest,
 } from '@fullstack/shared';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,11 +29,10 @@ type PromptUser = { sub: string; role: 'admin' | 'user' };
 /**
  * Prompt 管理服务
  *
- * 负责：
- * - 同步默认 Prompt 模板到数据库
- * - 管理 Prompt 版本的新增、编辑、发布
- * - 解析运行时生效的 Prompt（数据库优先，代码兜底）
- * - 记录 Prompt 测试日志
+ * 当前版本采用“单模板直接编辑”模式：
+ * - 每个 Prompt 模板只有一份当前生效内容
+ * - 不再暴露版本、发布、回滚这些概念
+ * - 运行时优先读取数据库模板，代码默认模板只作为兜底
  */
 @Injectable()
 export class PromptService {
@@ -50,16 +46,6 @@ export class PromptService {
     await this.ensureTemplatesSynced();
 
     const templates = await this.prisma.promptTemplate.findMany({
-      include: {
-        versions: {
-          where: { status: 'ACTIVE' },
-          orderBy: { version: 'desc' },
-          take: 1,
-        },
-        _count: {
-          select: { versions: true },
-        },
-      },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -69,15 +55,6 @@ export class PromptService {
       name: template.name,
       description: template.description,
       scene: template.scene as 'nl2sql' | 'rag',
-      activeVersion: template.versions[0]
-        ? {
-            id: template.versions[0].id,
-            version: template.versions[0].version,
-            status: this.toPromptVersionStatus(template.versions[0].status),
-            updatedAt: template.versions[0].updatedAt.toISOString(),
-          }
-        : null,
-      versionCount: template._count.versions,
       updatedAt: template.updatedAt.toISOString(),
     }));
   }
@@ -87,22 +64,11 @@ export class PromptService {
 
     const template = await this.prisma.promptTemplate.findUnique({
       where: { code },
-      include: {
-        versions: {
-          include: {
-            createdBy: true,
-          },
-          orderBy: { version: 'desc' },
-        },
-      },
     });
 
     if (!template) {
       throw new NotFoundException('Prompt 模板不存在');
     }
-
-    const defaultDefinition = getPromptDefaultDefinition(code);
-    const activeVersion = template.versions.find((item) => item.status === 'ACTIVE') ?? null;
 
     return {
       id: template.id,
@@ -110,137 +76,43 @@ export class PromptService {
       name: template.name,
       description: template.description,
       scene: template.scene as 'nl2sql' | 'rag',
-      defaultDraft: {
-        systemPrompt: defaultDefinition.systemPrompt,
-        userPromptTemplate: defaultDefinition.userPromptTemplate,
-        variablesSchema: (defaultDefinition.variablesSchema ?? null) as Record<string, unknown> | null,
-      },
-      activeVersionId: activeVersion?.id ?? null,
-      versions: template.versions.map((version) => this.toPromptVersionItem(version)),
+      systemPrompt: template.systemPrompt,
+      userPromptTemplate: template.userPromptTemplate,
+      variablesSchema: (template.variablesSchema as Record<string, unknown> | null) ?? null,
     };
   }
 
-  async createVersion(
+  async updateTemplate(
     code: PromptTemplateCode,
-    dto: CreatePromptVersionRequest,
+    dto: UpdatePromptTemplateRequest,
     user: PromptUser,
-  ): Promise<PromptVersionItem> {
+  ): Promise<PromptTemplateDetail> {
     this.ensureAdmin(user);
     await this.ensureTemplatesSynced();
 
-    const template = await this.prisma.promptTemplate.findUnique({
+    const updated = await this.prisma.promptTemplate.update({
       where: { code },
-      include: {
-        versions: {
-          orderBy: { version: 'desc' },
-          take: 1,
-        },
-      },
-    });
-
-    if (!template) {
-      throw new NotFoundException('Prompt 模板不存在');
-    }
-
-    const nextVersion = (template.versions[0]?.version ?? 0) + 1;
-    const created = await this.prisma.promptVersion.create({
-      data: {
-        templateId: template.id,
-        version: nextVersion,
-        systemPrompt: dto.systemPrompt,
-        userPromptTemplate: dto.userPromptTemplate,
-        variablesSchema: this.toNullableJsonValue(dto.variablesSchema),
-        createdById: user.sub,
-        status: 'DRAFT',
-      },
-    });
-    const version = await this.prisma.promptVersion.findUniqueOrThrow({
-      where: { id: created.id },
-      include: { createdBy: true },
-    });
-
-    return this.toPromptVersionItem(version);
-  }
-
-  async updateVersion(
-    id: string,
-    dto: UpdatePromptVersionRequest,
-    user: PromptUser,
-  ): Promise<PromptVersionItem> {
-    this.ensureAdmin(user);
-
-    const current = await this.prisma.promptVersion.findUnique({
-      where: { id },
-      include: { createdBy: true },
-    });
-
-    if (!current) {
-      throw new NotFoundException('Prompt 版本不存在');
-    }
-
-    if (current.status !== 'DRAFT') {
-      throw new ConflictException('只有草稿版本允许编辑');
-    }
-
-    const updated = await this.prisma.promptVersion.update({
-      where: { id },
       data: {
         systemPrompt: dto.systemPrompt,
         userPromptTemplate: dto.userPromptTemplate,
         variablesSchema: this.toNullableJsonValue(dto.variablesSchema),
       },
     });
-    const version = await this.prisma.promptVersion.findUniqueOrThrow({
-      where: { id: updated.id },
-      include: { createdBy: true },
-    });
 
-    return this.toPromptVersionItem(version);
-  }
-
-  async publishVersion(id: string, user: PromptUser): Promise<PromptVersionItem> {
-    this.ensureAdmin(user);
-
-    const version = await this.prisma.promptVersion.findUnique({
-      where: { id },
-      include: {
-        template: true,
-        createdBy: true,
-      },
-    });
-
-    if (!version) {
-      throw new NotFoundException('Prompt 版本不存在');
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.promptVersion.updateMany({
-        where: {
-          templateId: version.templateId,
-          status: 'ACTIVE',
-        },
-        data: {
-          status: 'ARCHIVED',
-        },
-      });
-
-      await tx.promptVersion.update({
-        where: { id },
-        data: { status: 'ACTIVE' },
-      });
-    });
-
-    const published = await this.prisma.promptVersion.findUniqueOrThrow({
-      where: { id },
-      include: { createdBy: true },
-    });
-
-    return this.toPromptVersionItem(published);
+    return {
+      id: updated.id,
+      code: updated.code as PromptTemplateCode,
+      name: updated.name,
+      description: updated.description,
+      scene: updated.scene as 'nl2sql' | 'rag',
+      systemPrompt: updated.systemPrompt,
+      userPromptTemplate: updated.userPromptTemplate,
+      variablesSchema: (updated.variablesSchema as Record<string, unknown> | null) ?? null,
+    };
   }
 
   async testPrompt(input: {
     templateCode: PromptTemplateCode;
-    promptVersionId?: string;
     variables: Record<string, unknown>;
     user: PromptUser;
   }): Promise<PromptTestResult> {
@@ -253,16 +125,11 @@ export class PromptService {
           systemPrompt: string;
           userPrompt: string;
           source: 'default' | 'database';
-          promptVersionId: string | null;
         }
       | null = null;
 
     try {
-      resolvedPrompt = await this.resolvePrompt(
-        input.templateCode,
-        input.variables,
-        input.promptVersionId,
-      );
+      resolvedPrompt = await this.resolvePrompt(input.templateCode, input.variables);
 
       const output = await this.generatePromptTestOutput(input.templateCode, resolvedPrompt);
 
@@ -270,7 +137,7 @@ export class PromptService {
       await this.prisma.promptTestLog.create({
         data: {
           templateCode: input.templateCode,
-          promptVersionId: resolvedPrompt.promptVersionId,
+          promptVersionId: null,
           input: this.toJsonValue(input.variables),
           resolvedPrompt: this.toJsonValue({
             systemPrompt: resolvedPrompt.systemPrompt,
@@ -286,7 +153,6 @@ export class PromptService {
       return {
         requestId,
         templateCode: input.templateCode,
-        promptVersionId: resolvedPrompt.promptVersionId,
         resolvedPrompt: {
           systemPrompt: resolvedPrompt.systemPrompt,
           userPrompt: resolvedPrompt.userPrompt,
@@ -299,15 +165,15 @@ export class PromptService {
       await this.prisma.promptTestLog.create({
         data: {
           templateCode: input.templateCode,
-          promptVersionId: resolvedPrompt?.promptVersionId ?? input.promptVersionId ?? null,
+          promptVersionId: null,
           input: this.toJsonValue(input.variables),
           resolvedPrompt: this.toJsonValue(
             resolvedPrompt
-            ? {
-                systemPrompt: resolvedPrompt.systemPrompt,
-                userPrompt: resolvedPrompt.userPrompt,
-              }
-            : { systemPrompt: '', userPrompt: '' },
+              ? {
+                  systemPrompt: resolvedPrompt.systemPrompt,
+                  userPrompt: resolvedPrompt.userPrompt,
+                }
+              : { systemPrompt: '', userPrompt: '' },
           ),
           output: null,
           durationMs: Date.now() - startedAt,
@@ -332,12 +198,12 @@ export class PromptService {
     return logs.map((log) => ({
       id: log.id,
       templateCode: log.templateCode as PromptTemplateCode,
-      promptVersionId: log.promptVersionId,
       input: (log.input as Record<string, unknown>) ?? {},
-      resolvedPrompt: (log.resolvedPrompt as {
-        systemPrompt: string;
-        userPrompt: string;
-      }) ?? { systemPrompt: '', userPrompt: '' },
+      resolvedPrompt:
+        (log.resolvedPrompt as {
+          systemPrompt: string;
+          userPrompt: string;
+        }) ?? { systemPrompt: '', userPrompt: '' },
       output: log.output,
       durationMs: log.durationMs,
       success: log.success,
@@ -350,77 +216,28 @@ export class PromptService {
     }));
   }
 
-  async resolvePrompt(
-    code: PromptTemplateCode,
-    variables: Record<string, unknown>,
-    promptVersionId?: string,
-  ) {
+  async resolvePrompt(code: PromptTemplateCode, variables: Record<string, unknown>) {
     await this.ensureTemplatesSynced();
 
-    let version = null as null | {
-      id: string;
-      systemPrompt: string;
-      userPromptTemplate: string;
-    };
+    const template = await this.prisma.promptTemplate.findUnique({
+      where: { code },
+      select: {
+        systemPrompt: true,
+        userPromptTemplate: true,
+      },
+    });
 
-    if (promptVersionId) {
-      const found = await this.prisma.promptVersion.findUnique({
-        where: { id: promptVersionId },
-        select: {
-          id: true,
-          systemPrompt: true,
-          userPromptTemplate: true,
-          template: {
-            select: { code: true },
-          },
-        },
-      });
-
-      if (!found) {
-        throw new NotFoundException('Prompt 版本不存在');
-      }
-
-      if (found.template.code !== code) {
-        throw new ConflictException('Prompt 版本与模板编码不匹配');
-      }
-
-      version = {
-        id: found.id,
-        systemPrompt: found.systemPrompt,
-        userPromptTemplate: found.userPromptTemplate,
-      };
-    } else {
-      const active = await this.prisma.promptVersion.findFirst({
-        where: {
-          template: { code },
-          status: 'ACTIVE',
-        },
-        orderBy: { version: 'desc' },
-        select: {
-          id: true,
-          systemPrompt: true,
-          userPromptTemplate: true,
-        },
-      });
-
-      if (active) {
-        version = active;
-      }
-    }
-
-    if (version) {
+    if (template?.systemPrompt && template.userPromptTemplate) {
       return {
         source: 'database' as const,
-        promptVersionId: version.id,
-        systemPrompt: interpolatePromptTemplate(version.systemPrompt, variables),
-        userPrompt: interpolatePromptTemplate(version.userPromptTemplate, variables),
+        systemPrompt: interpolatePromptTemplate(template.systemPrompt, variables),
+        userPrompt: interpolatePromptTemplate(template.userPromptTemplate, variables),
       };
     }
 
     const fallback = getPromptDefaultDefinition(code);
     return {
       source: 'default' as const,
-      promptVersionId: null,
       systemPrompt: interpolatePromptTemplate(fallback.systemPrompt, variables),
       userPrompt: interpolatePromptTemplate(fallback.userPromptTemplate, variables),
     };
@@ -428,8 +245,8 @@ export class PromptService {
 
   private async ensureTemplatesSynced() {
     await Promise.all(
-      PROMPT_DEFAULT_DEFINITIONS.map((definition) =>
-        this.prisma.promptTemplate.upsert({
+      PROMPT_DEFAULT_DEFINITIONS.map(async (definition) => {
+        const template = await this.prisma.promptTemplate.upsert({
           where: { code: definition.code },
           update: {
             name: definition.name,
@@ -441,51 +258,28 @@ export class PromptService {
             name: definition.name,
             description: definition.description,
             scene: definition.scene,
+            systemPrompt: definition.systemPrompt,
+            userPromptTemplate: definition.userPromptTemplate,
+            variablesSchema: this.toNullableJsonValue(definition.variablesSchema ?? undefined),
           },
-        }),
-      ),
+        });
+
+        // 兼容老数据：历史模板没有“当前生效内容”字段时，自动补成代码默认值。
+        if (!template.systemPrompt || !template.userPromptTemplate) {
+          await this.prisma.promptTemplate.update({
+            where: { id: template.id },
+            data: {
+              systemPrompt: template.systemPrompt || definition.systemPrompt,
+              userPromptTemplate:
+                template.userPromptTemplate || definition.userPromptTemplate,
+              variablesSchema:
+                template.variablesSchema ??
+                this.toNullableJsonValue(definition.variablesSchema ?? undefined),
+            },
+          });
+        }
+      }),
     );
-  }
-
-  private toPromptVersionItem(version: {
-    id: string;
-    templateId: string;
-    version: number;
-    systemPrompt: string;
-    userPromptTemplate: string;
-    variablesSchema: unknown;
-    status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-    createdAt: Date;
-    updatedAt: Date;
-    createdBy: { id: string; username: string };
-  }): PromptVersionItem {
-    return {
-      id: version.id,
-      templateId: version.templateId,
-      version: version.version,
-      systemPrompt: version.systemPrompt,
-      userPromptTemplate: version.userPromptTemplate,
-      variablesSchema: (version.variablesSchema as Record<string, unknown> | null) ?? null,
-      status: this.toPromptVersionStatus(version.status),
-      createdBy: {
-        id: version.createdBy.id,
-        username: version.createdBy.username,
-      },
-      createdAt: version.createdAt.toISOString(),
-      updatedAt: version.updatedAt.toISOString(),
-    };
-  }
-
-  private toPromptVersionStatus(status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED') {
-    switch (status) {
-      case 'ACTIVE':
-        return 'active' as const;
-      case 'ARCHIVED':
-        return 'archived' as const;
-      case 'DRAFT':
-      default:
-        return 'draft' as const;
-    }
   }
 
   private getPromptTestModel(code: PromptTemplateCode) {
@@ -525,53 +319,27 @@ export class PromptService {
     });
   }
 
-  private ensureAdmin(user: PromptUser) {
-    if (user.role !== 'admin') {
-      throw new ForbiddenException('只有管理员可以管理 Prompt');
-    }
-  }
-
-  private toNullableJsonValue(value?: Record<string, unknown> | null) {
-    if (value === null || value === undefined) {
-      return Prisma.JsonNull;
-    }
-
-    return value as Prisma.InputJsonValue;
-  }
-
-  private toJsonValue(value: Record<string, unknown>) {
-    return value as Prisma.InputJsonValue;
-  }
-
   private createKnowledgeBasePromptTestModel() {
-    const model =
+    const modelName =
       this.configService.get<string>('ZHIPU_CHAT_MODEL') ||
-      this.configService.get<string>('OPENAI_CHAT_MODEL') ||
       this.configService.get<string>('OPENAI_ANSWER_MODEL') ||
+      this.configService.get<string>('OPENAI_CHAT_MODEL') ||
       this.configService.get<string>('OPENAI_MODEL');
 
-    if (!model) {
-      throw new InternalServerErrorException('缺少知识库问答聊天模型配置');
+    if (!modelName) {
+      throw new InternalServerErrorException('未配置 Prompt 测试模型');
     }
-
-    const apiKey =
-      this.configService.get<string>('ZHIPU_API_KEY') ||
-      this.configService.get<string>('OPENAI_API_KEY');
-
-    if (!apiKey) {
-      throw new InternalServerErrorException('缺少 ZHIPU_API_KEY 或 OPENAI_API_KEY 配置');
-    }
-
-    const baseURL =
-      this.configService.get<string>('ZHIPU_CHAT_MODEL')
-        ? this.configService.get<string>('ZHIPU_BASE_URL')
-        : this.configService.get<string>('OPENAI_BASE_URL');
 
     return new ChatOpenAI({
-      apiKey,
-      model,
+      model: modelName,
+      apiKey:
+        this.configService.get<string>('ZHIPU_API_KEY') ||
+        this.configService.get<string>('OPENAI_API_KEY'),
+      configuration: this.buildConfiguration(
+        this.configService.get<string>('ZHIPU_BASE_URL') ||
+          this.configService.get<string>('OPENAI_BASE_URL'),
+      ),
       temperature: 0.3,
-      configuration: baseURL ? { baseURL } : undefined,
     });
   }
 
@@ -582,27 +350,34 @@ export class PromptService {
 
     if (Array.isArray(content)) {
       return content
-        .map((part) => {
-          if (typeof part === 'string') {
-            return part;
-          }
-
-          if (
-            part &&
-            typeof part === 'object' &&
-            'type' in part &&
-            part.type === 'text' &&
-            'text' in part &&
-            typeof part.text === 'string'
-          ) {
-            return part.text;
-          }
-
-          return '';
-        })
+        .map((item) =>
+          typeof item === 'string'
+            ? item
+            : typeof item === 'object' && item && 'text' in item
+              ? String((item as { text?: unknown }).text ?? '')
+              : '',
+        )
         .join('');
     }
 
-    return '';
+    return String(content ?? '');
+  }
+
+  private ensureAdmin(user: PromptUser) {
+    if (user.role !== 'admin') {
+      throw new ForbiddenException('只有管理员可以管理 Prompt');
+    }
+  }
+
+  private toJsonValue(value: Record<string, unknown>) {
+    return value as Prisma.InputJsonValue;
+  }
+
+  private toNullableJsonValue(value: Record<string, unknown> | undefined) {
+    return value ? (value as Prisma.InputJsonValue) : Prisma.JsonNull;
+  }
+
+  private buildConfiguration(baseURL?: string) {
+    return baseURL ? { baseURL } : undefined;
   }
 }
