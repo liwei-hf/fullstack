@@ -1,9 +1,9 @@
-# Fullstack Interview Project
+# Fullstack AI Platform
 
 > 基于 NestJS + React + shadcn/ui 的全栈项目，采用 pnpm workspace monorepo 架构。
 >
 > 适合用于：
-> - 面试项目展示
+> - AI 全栈项目展示
 > - 全栈技能演示
 > - 企业级管理系统参考
 > - 学习和实践现代 Web 开发技术
@@ -91,7 +91,7 @@ pnpm dev:admin
 ## 项目结构
 
 ```
-fullstack-interview-project/
+fullstack-ai-platform/
 ├── apps/
 │   ├── server/           # NestJS 后端
 │   │   ├── src/
