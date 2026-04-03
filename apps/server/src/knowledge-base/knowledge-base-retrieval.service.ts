@@ -92,7 +92,10 @@ export class KnowledgeBaseRetrievalService {
     const vectorSupportDurationMs = Date.now() - vectorSupportStartedAt;
 
     const queryEmbeddingStartedAt = Date.now();
-    const [queryEmbedding] = await this.modelService.createEmbeddingModel().embedDocuments([question]);
+    const embeddingModel = this.modelService.createEmbeddingModel();
+    // 查询向量和文档向量分开处理，更符合 embedding 模型的设计意图，
+    // 比直接对单条 query 调用 embedDocuments 更稳一些。
+    const queryEmbedding = await embeddingModel.embedQuery(question);
     const queryEmbeddingDurationMs = Date.now() - queryEmbeddingStartedAt;
 
     const vectorLiteral = this.vectorToSqlLiteral(queryEmbedding);

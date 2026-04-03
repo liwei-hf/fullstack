@@ -2,6 +2,8 @@ import type { PromptTemplateCode } from '@fullstack/shared';
 import {
   KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE,
   buildKnowledgeBaseAnswerVariables,
+  KNOWLEDGE_BASE_RETRIEVAL_REWRITE_DEFAULT_TEMPLATE,
+  buildKnowledgeBaseRetrievalRewriteVariables,
 } from './prompts/knowledge-base.prompts';
 import {
   SQL_ANSWER_DEFAULT_TEMPLATE,
@@ -14,6 +16,7 @@ export const PROMPT_DEFAULT_DEFINITIONS = [
   SQL_GENERATION_DEFAULT_TEMPLATE,
   SQL_ANSWER_DEFAULT_TEMPLATE,
   KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE,
+  KNOWLEDGE_BASE_RETRIEVAL_REWRITE_DEFAULT_TEMPLATE,
 ] as const;
 
 export function getPromptDefaultDefinition(code: PromptTemplateCode) {
@@ -27,6 +30,7 @@ export function getPromptDefaultDefinition(code: PromptTemplateCode) {
 
 export {
   buildKnowledgeBaseAnswerVariables,
+  buildKnowledgeBaseRetrievalRewriteVariables,
   buildSqlAnswerVariables,
   buildSqlGenerationVariables,
 };

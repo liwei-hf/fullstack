@@ -64,6 +64,12 @@ describe('KnowledgeBase / RAG (e2e)', () => {
       model: 'glm-test',
     }),
     createChatModel: jest.fn().mockImplementation(() => ({
+      invoke: jest.fn(async (prompt: string) => {
+        const match = prompt.match(/当前问题[:：](.+?)\n\n请输出适合知识库检索的最终问题[:：]?/s);
+        return {
+          content: match?.[1]?.trim() ?? '请总结请假流程',
+        };
+      }),
       stream: async function* () {
         yield { content: '结论：这是一条测试回答。' };
         yield { content: '依据来自员工手册中的请假流程说明。' };
@@ -578,19 +584,7 @@ describe('KnowledgeBase / RAG (e2e)', () => {
     expect(mockRetrievalService.retrieveContext).toHaveBeenNthCalledWith(
       2,
       knowledgeBaseId,
-      expect.stringContaining('请说明请假流程'),
-      expect.any(String),
-    );
-    expect(mockRetrievalService.retrieveContext).toHaveBeenNthCalledWith(
-      2,
-      knowledgeBaseId,
-      expect.stringContaining('测试回答'),
-      expect.any(String),
-    );
-    expect(mockRetrievalService.retrieveContext).toHaveBeenNthCalledWith(
-      2,
-      knowledgeBaseId,
-      expect.stringContaining('那病假呢？'),
+      '那病假呢？',
       expect.any(String),
     );
   });

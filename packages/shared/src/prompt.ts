@@ -11,6 +11,7 @@ export const PROMPT_TEMPLATE_CODES = [
   'sql_generation',
   'sql_answer',
   'knowledge_base_answer',
+  'knowledge_base_retrieval_rewrite',
 ] as const;
 
 export type PromptTemplateCode = (typeof PROMPT_TEMPLATE_CODES)[number];

@@ -301,7 +301,10 @@ export class PromptService {
     code: PromptTemplateCode,
     resolvedPrompt: { systemPrompt: string; userPrompt: string },
   ) {
-    if (code === 'knowledge_base_answer') {
+    if (
+      code === 'knowledge_base_answer' ||
+      code === ('knowledge_base_retrieval_rewrite' as PromptTemplateCode)
+    ) {
       const model = this.createKnowledgeBasePromptTestModel();
       const response = await model.invoke(
         [resolvedPrompt.systemPrompt, '', resolvedPrompt.userPrompt].join('\n\n'),

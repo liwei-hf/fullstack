@@ -49,10 +49,6 @@ export class KnowledgeBaseChatService {
       knowledgeBaseId,
       sessionId,
     });
-    const effectiveQuestion = historyText
-      ? [`最近对话上下文：`, historyText, '', `当前问题：${question}`].join('\n')
-      : question;
-
     this.logger.log(
       JSON.stringify({
         requestId,
@@ -134,10 +130,16 @@ export class KnowledgeBaseChatService {
         return;
       }
 
+      const retrievalQuestionResult = await this.resolveRetrievalQuestion({
+        question,
+        historyText,
+        requestId,
+      });
+
       // 先把检索阶段跑完，回答模型只消费预算后的上下文，避免 prompt 过大。
       const retrieved = await this.retrievalService.retrieveContext(
         knowledgeBaseId,
-        effectiveQuestion,
+        retrievalQuestionResult.retrievalQuestion,
         requestId,
       );
 
@@ -223,6 +225,8 @@ export class KnowledgeBaseChatService {
           strictMode: knowledgeBase.strictMode,
           llmRequestDurationMs,
           sourceCount: retrieved.sources.length,
+          retrievalQuestion: retrievalQuestionResult.retrievalQuestion,
+          retrievalQuestionRewritten: retrievalQuestionResult.rewritten,
           retrievalMetrics: retrieved.metrics,
         }),
       );
@@ -463,6 +467,84 @@ export class KnowledgeBaseChatService {
     }
 
     return '';
+  }
+
+  /**
+   * 多轮追问时，先把当前问题改写成适合检索的独立问题。
+   *
+   * 这样既能保留回答阶段的会话记忆，又避免直接拿整段历史做 embedding 污染召回。
+   */
+  private async resolveRetrievalQuestion(input: {
+    question: string;
+    historyText?: string;
+    requestId?: string;
+  }) {
+    const rawHistoryText = input.historyText?.trim();
+    if (!rawHistoryText) {
+      return {
+        retrievalQuestion: input.question,
+        rewritten: false,
+      };
+    }
+
+    const startedAt = Date.now();
+
+    try {
+      const resolvedPrompt = await this.promptResolverService.resolveKnowledgeBaseRetrievalRewritePrompt({
+        question: input.question,
+        historyText: rawHistoryText,
+      });
+      const model = this.modelService.createChatModel();
+      const response = await model.invoke(
+        [resolvedPrompt.systemPrompt, '', resolvedPrompt.userPrompt].join('\n\n'),
+      );
+      const retrievalQuestion = this.normalizeRetrievalQuestion(
+        this.extractText(response.content),
+        input.question,
+      );
+
+      this.logger.log(
+        JSON.stringify({
+          requestId: input.requestId,
+          stage: 'rag_retrieval_question_resolved',
+          durationMs: Date.now() - startedAt,
+          rewritten: retrievalQuestion !== input.question,
+          originalQuestion: input.question,
+          retrievalQuestion,
+        }),
+      );
+
+      return {
+        retrievalQuestion,
+        rewritten: retrievalQuestion !== input.question,
+      };
+    } catch (error) {
+      this.logger.warn(
+        JSON.stringify({
+          requestId: input.requestId,
+          stage: 'rag_retrieval_question_rewrite_failed',
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+
+      return {
+        retrievalQuestion: input.question,
+        rewritten: false,
+      };
+    }
+  }
+
+  private normalizeRetrievalQuestion(rawQuestion: string, fallbackQuestion: string) {
+    const normalized = rawQuestion
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+      .replace(/^(检索问题|改写后问题|最终问题|问题)\s*[:：]\s*/i, '')
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    return normalized || fallbackQuestion;
   }
 
   /**

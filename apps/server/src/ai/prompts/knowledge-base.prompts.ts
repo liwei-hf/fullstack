@@ -38,6 +38,22 @@ export function buildKnowledgeBaseAnswerVariables(input: {
 }
 
 /**
+ * 检索问题改写变量
+ *
+ * 用于把多轮对话里的追问改写成“适合检索的完整问题”，
+ * 避免直接把整段历史做 embedding 导致召回方向被污染。
+ */
+export function buildKnowledgeBaseRetrievalRewriteVariables(input: {
+  question: string;
+  historyText?: string;
+}) {
+  return {
+    question: input.question,
+    historyText: input.historyText ?? '',
+  };
+}
+
+/**
  * 知识库级 Prompt 覆盖规则
  *
  * 这里不让每个知识库直接写一整段 Prompt，而是只暴露少量结构化选项，
@@ -106,6 +122,33 @@ export const KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE: DefaultKnowledgeBasePromptT
   variablesSchema: {
     question: 'string',
     contextText: 'string',
+    historyText: 'string',
+  },
+};
+
+export const KNOWLEDGE_BASE_RETRIEVAL_REWRITE_DEFAULT_TEMPLATE: DefaultKnowledgeBasePromptTemplateDefinition = {
+  code: 'knowledge_base_retrieval_rewrite' as PromptTemplateCode,
+  name: '知识库问答 - 检索问题改写',
+  description: '把多轮追问改写成适合检索的独立问题。',
+  scene: 'rag',
+  systemPrompt: [
+    '你是一个知识库检索查询改写助手。',
+    '你的任务不是回答问题，而是把当前问题改写成适合知识库检索的独立问题。',
+    '如果当前问题已经完整、明确、适合直接检索，就原样返回，不要改写。',
+    '如果当前问题依赖最近对话中的指代、简称、上下文主题或省略信息，要补全为完整问题。',
+    '改写时只能基于最近对话上下文补全，不要凭空添加知识库中未出现的新事实。',
+    '输出必须只有一行最终检索问题，不要解释，不要加前缀，不要加引号，不要回答原问题。',
+  ].join('\n'),
+  userPromptTemplate: [
+    '最近对话上下文：',
+    '{{historyText}}',
+    '',
+    '当前问题：{{question}}',
+    '',
+    '请输出适合知识库检索的最终问题：',
+  ].join('\n'),
+  variablesSchema: {
+    question: 'string',
     historyText: 'string',
   },
 };

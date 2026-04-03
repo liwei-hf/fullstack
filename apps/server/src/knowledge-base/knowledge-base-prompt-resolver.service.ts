@@ -4,6 +4,7 @@ import { PromptService } from '../ai/prompt.service';
 import {
   buildKnowledgeBaseAnswerVariables,
   buildKnowledgeBasePromptOverrideRules,
+  buildKnowledgeBaseRetrievalRewriteVariables,
 } from '../ai/prompts/knowledge-base.prompts';
 
 /**
@@ -37,5 +38,18 @@ export class KnowledgeBasePromptResolverService {
       ...resolvedPrompt,
       systemPrompt: [resolvedPrompt.systemPrompt, '', configRules].join('\n'),
     };
+  }
+
+  async resolveKnowledgeBaseRetrievalRewritePrompt(input: {
+    question: string;
+    historyText?: string;
+  }) {
+    return this.promptService.resolvePrompt(
+      'knowledge_base_retrieval_rewrite' as never,
+      buildKnowledgeBaseRetrievalRewriteVariables({
+        question: input.question,
+        historyText: input.historyText,
+      }),
+    );
   }
 }
