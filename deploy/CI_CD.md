@@ -67,14 +67,17 @@ chmod 600 ~/.ssh/authorized_keys
 
 `CD` 触发后会执行：
 
-1. `pnpm install --frozen-lockfile`
-2. 本地构建发布包
-3. 上传到服务器
-4. 服务器解包
-5. 安装 server 运行时依赖
-6. 生成 Prisma Client
-7. `pm2 restart fullstack-server`
-8. 校验 `/`、`/m/`、`/api/auth/refresh`
+1. 通过 `corepack` 激活 `pnpm@9.0.0`
+2. `pnpm install --frozen-lockfile`
+3. 本地构建发布包
+4. 上传到服务器
+5. 服务器解包
+6. 安装 server 运行时依赖
+7. 生成 Prisma Client
+8. 通过 `releases/current` 切换到新版本
+9. 重建 `pm2` 进程并指向 `current`
+10. 同步项目中的 Nginx 配置
+11. 校验 `/`、`/m/`、`/api/health`
 
 相关脚本：
 
@@ -86,7 +89,7 @@ chmod 600 ~/.ssh/authorized_keys
 本地如果你也想复用同一套免密发布方式，可以直接指定部署私钥：
 
 ```bash
-SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy SERVER_HOST=47.83.123.25 SERVER_USER=root pnpm deploy:release
+DOMAIN=liwei.it.com SYNC_NGINX=true SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy SERVER_HOST=47.83.123.25 SERVER_USER=root pnpm deploy:release
 ```
 
 如果你改了仓库里的 Nginx 模板，同样可以直接同步：

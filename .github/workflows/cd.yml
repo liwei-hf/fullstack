@@ -19,21 +19,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
+    env:
+      DOMAIN: liwei.it.com
+      SYNC_NGINX: 'true'
+      SERVER_HOST: ${{ secrets.DEMO_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.DEMO_SERVER_USER }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
+          pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -44,14 +50,9 @@ jobs:
           ssh-private-key: ${{ secrets.DEMO_SERVER_SSH_KEY }}
 
       - name: Trust remote host
-        env:
-          SERVER_HOST: ${{ secrets.DEMO_SERVER_HOST }}
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
 
       - name: Deploy release package
-        env:
-          SERVER_HOST: ${{ secrets.DEMO_SERVER_HOST }}
-          SERVER_USER: ${{ secrets.DEMO_SERVER_USER }}
         run: pnpm deploy:release
