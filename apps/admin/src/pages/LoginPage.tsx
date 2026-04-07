@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,7 +8,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/utils/api';
 import { useAuthStore } from '@/store/auth-store';
-import { Bot, Database, Loader2, MessageSquareText, ShieldCheck } from 'lucide-react';
+import { Bot, Database, Eye, EyeOff, Loader2, MessageSquareText, ShieldCheck } from 'lucide-react';
 
 /**
  * 登录页
@@ -23,7 +22,8 @@ export default function LoginPage() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState('admin');
-  const [password, setPassword] = useState('Admin123456!');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -118,13 +118,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <Alert className="rounded-2xl border-blue-100 bg-blue-50/80 text-blue-700">
-                <AlertDescription className="space-y-1 text-sm">
-                  <p>测试账号：admin</p>
-                  <p>默认密码：Admin123456!</p>
-                </AlertDescription>
-              </Alert>
-
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="account">账号</Label>
@@ -139,14 +132,24 @@ export default function LoginPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="password">密码</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="请输入密码"
-                    className="h-12 rounded-2xl border-slate-200 bg-slate-50/70 px-4"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="请输入密码"
+                      className="h-12 rounded-2xl border-slate-200 bg-slate-50/70 px-4 pr-12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-400 transition hover:text-slate-600"
+                      aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <Button

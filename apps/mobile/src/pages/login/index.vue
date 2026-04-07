@@ -23,12 +23,73 @@
 
         <label class="field-item">
           <span class="field-label">密码</span>
-          <input
-            v-model="password"
-            class="field-input"
-            type="password"
-            placeholder="请输入密码"
-          />
+          <div class="password-field">
+            <input
+              v-model="password"
+              class="field-input field-input-with-action"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="请输入密码"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              @click="showPassword = !showPassword"
+            >
+              <svg v-if="showPassword" viewBox="0 0 24 24" aria-hidden="true" class="password-toggle-icon">
+                <path
+                  d="M3 3l18 18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                />
+                <path
+                  d="M10.58 10.58a2 2 0 0 0 2.83 2.83"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                />
+                <path
+                  d="M9.88 5.09A10.94 10.94 0 0 1 12 4.9c5.05 0 8.27 3.45 9.32 5.1-.48.76-1.4 2-2.77 3.13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                />
+                <path
+                  d="M6.61 6.61C4.96 7.74 3.84 9.11 3 10c1.05 1.65 4.27 5.1 9.32 5.1 1.61 0 3.04-.34 4.3-.87"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true" class="password-toggle-icon">
+                <path
+                  d="M2.3 12S6 5.7 12 5.7 21.7 12 21.7 12 18 18.3 12 18.3 2.3 12 2.3 12Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.8"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="3"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                />
+              </svg>
+            </button>
+          </div>
         </label>
 
         <button
@@ -42,12 +103,6 @@
         </button>
       </div>
 
-      <p class="tips-line">
-        测试账号：
-        <span class="tips-strong">admin</span>
-        /
-        <span class="tips-strong">Admin123456!</span>
-      </p>
     </div>
   </div>
 </template>
@@ -63,8 +118,9 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const account = ref('admin')
-const password = ref('Admin123456!')
+const password = ref('')
 const loading = ref(false)
+const showPassword = ref(false)
 
 /**
  * 登录页改成更轻的 ChatGPT 风格后，仍然保持最短登录主链路，避免为了样式把动作路径做复杂。
@@ -192,6 +248,35 @@ const handleLogin = async () => {
   color: #9ca3af;
 }
 
+.password-field {
+  position: relative;
+}
+
+.field-input-with-action {
+  padding-right: 56px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #5f90f8;
+}
+
+.password-toggle-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .login-btn {
   width: 100%;
   height: 46px;
@@ -220,18 +305,6 @@ const handleLogin = async () => {
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-}
-
-.tips-line {
-  margin: 14px 0 0;
-  text-align: center;
-  font-size: 12px;
-  color: #8ea2bf;
-}
-
-.tips-strong {
-  font-weight: 700;
-  color: #5b6f94;
 }
 
 @keyframes spin {

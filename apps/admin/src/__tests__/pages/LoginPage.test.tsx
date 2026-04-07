@@ -14,6 +14,7 @@ import userEvent from '@testing-library/user-event';
 
 // 模拟 fetch
 global.fetch = vi.fn();
+const mockToast = vi.fn();
 
 // 模拟 useNavigate
 const mockNavigate = vi.fn();
@@ -24,6 +25,16 @@ vi.mock('react-router-dom', async (importOriginal) => {
     useNavigate: () => mockNavigate,
   };
 });
+
+vi.mock('../../hooks/use-toast', () => ({
+  useToast: () => ({
+    toast: mockToast,
+  }),
+}));
+
+vi.mock('../../components/ui/toaster', () => ({
+  Toaster: () => null,
+}));
 
 describe('LoginPage', () => {
   beforeEach(() => {
@@ -48,11 +59,11 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: /登录/i })).toBeInTheDocument();
   });
 
-  it('应该显示默认账号提示', async () => {
+  it('不应该展示默认账号密码提示，且密码默认留空', async () => {
     await renderLoginPage();
 
-    expect(screen.getByText('admin')).toBeInTheDocument();
-    expect(screen.getByText('Admin123456!')).toBeInTheDocument();
+    expect(screen.queryByText('Admin123456!')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/密码/i)).toHaveValue('');
   });
 
   it('应该允许输入账号和密码', async () => {
@@ -97,6 +108,8 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
 
+    await userEvent.type(screen.getByLabelText(/密码/i), 'testpass');
+
     // 点击登录按钮
     const loginButton = screen.getByRole('button', { name: /登录/i });
     await userEvent.click(loginButton);
@@ -115,20 +128,20 @@ describe('LoginPage', () => {
       json: async () => ({ message: 'Invalid credentials' }),
     });
 
-    // 模拟 alert
-    const mockAlert = vi.fn();
-    vi.spyOn(window, 'alert').mockImplementation(mockAlert);
-
     await renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText(/密码/i), 'wrong-password');
 
     const loginButton = screen.getByRole('button', { name: /登录/i });
     await userEvent.click(loginButton);
 
     await waitFor(() => {
-      expect(mockAlert).toHaveBeenCalled();
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '登录失败',
+        })
+      );
     });
-
-    mockAlert.mockRestore();
   });
 
   it('应该在登录时显示加载状态', async () => {
@@ -141,6 +154,8 @@ describe('LoginPage', () => {
     );
 
     await renderLoginPage();
+
+    await userEvent.type(screen.getByLabelText(/密码/i), 'testpass');
 
     const loginButton = screen.getByRole('button', { name: /登录/i });
     await userEvent.click(loginButton);
