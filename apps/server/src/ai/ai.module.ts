@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { SystemSettingsModule } from '../system-settings/system-settings.module';
 import { AiController } from './ai.controller';
 import { PromptController } from './prompt.controller';
 import { PromptService } from './prompt.service';
@@ -11,7 +12,7 @@ import { OpenAiCompatibleProvider } from './openai-compatible.provider';
 import { SqlValidator } from './sql-validator';
 
 @Module({
-  imports: [PrismaModule, RedisModule],
+  imports: [PrismaModule, RedisModule, SystemSettingsModule],
   controllers: [AiController, PromptController],
   providers: [
     AiService,

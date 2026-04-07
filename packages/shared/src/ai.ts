@@ -17,6 +17,16 @@ export interface AiSqlSummaryItem {
   value: string | number;
 }
 
+/**
+ * 智能问数 SQL 的回传可见性策略
+ *
+ * - visible：所有已登录用户都能看到生成 SQL
+ * - hidden：所有用户都看不到 SQL
+ * - admin_only：仅管理员可见
+ */
+export const AI_SQL_VISIBILITIES = ['visible', 'hidden', 'admin_only'] as const;
+export type AiSqlVisibility = (typeof AI_SQL_VISIBILITIES)[number];
+
 export type AiSqlSseEvent =
   | {
       type: 'meta';

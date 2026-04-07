@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { RunnableLambda, RunnableSequence } from '@langchain/core/runnables';
 import { ChatOpenAI } from '@langchain/openai';
 import type { Response } from 'express';
-import type { AiSqlSummaryItem } from '@fullstack/shared';
+import type { AiSqlSummaryItem, AiSqlVisibility } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiSessionMemoryService } from './ai-session-memory.service';
 import { AiSqlError } from './ai.errors';
@@ -15,7 +15,8 @@ import {
   buildSqlGenerationVariables,
 } from './prompt-defaults.registry';
 import { SqlValidator } from './sql-validator';
-import { AiSqlUserContext } from './ai.types';
+import { AiSqlUserContext, SqlVisibilityContext } from './ai.types';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 @Injectable()
 export class AiService {
@@ -28,6 +29,7 @@ export class AiService {
     private readonly sessionMemoryService: AiSessionMemoryService,
     private readonly promptService: PromptService,
     private readonly sqlValidator: SqlValidator,
+    private readonly systemSettingsService: SystemSettingsService,
   ) {}
 
   async streamSqlAnswer(
@@ -141,8 +143,12 @@ export class AiService {
         }),
       );
 
-      // 开发环境保留 SQL 事件，便于排查提示词和权限规则是否符合预期。
-      if (this.configService.get<string>('NODE_ENV') !== 'production') {
+      // SQL 是否回传给前端由配置策略统一控制：
+      // - visible：所有用户可见
+      // - hidden：所有用户不可见
+      // - admin_only：仅管理员可见（默认）
+      // 这样既保留了线上安全边界，也支持演示环境按需打开。
+      if (await this.shouldExposeSqlToUser(user)) {
         this.writeEvent(res, 'sql_generated', {
           type: 'sql_generated',
           sql: normalizedSql,
@@ -502,6 +508,26 @@ export class AiService {
       this.configService.get<string>('OPENAI_MODEL') ||
       undefined
     );
+  }
+
+  /**
+   * 统一控制 SQL 是否应该回传给当前用户。
+   *
+   * 前端只消费 sql_generated 事件，不感知生产环境、角色和配置细节；
+   * 这样后续如果把策略做成后台设置，也只需要替换这里的配置来源。
+   */
+  private async shouldExposeSqlToUser(user: SqlVisibilityContext) {
+    const visibility = await this.systemSettingsService.resolveAiSqlVisibility();
+
+    if (visibility === 'visible') {
+      return true;
+    }
+
+    if (visibility === 'hidden') {
+      return false;
+    }
+
+    return user.role === 'admin';
   }
 
   private toAiError(error: unknown) {

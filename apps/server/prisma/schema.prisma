@@ -389,3 +389,16 @@ model PromptTestLog {
   @@index([createdById])
   @@index([createdAt])
 }
+
+// 系统设置模型
+// 先用 key + Json value 的轻量方案承接后台配置，避免一开始为每个设置都拆独立表。
+// 当前已接入的配置项：AI SQL 展示策略。
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([updatedAt])
+}

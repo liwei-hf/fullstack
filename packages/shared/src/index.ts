@@ -223,7 +223,17 @@ export type {
   AiSqlStreamRequest,
   AiSqlSummaryItem,
   AiSqlSseEvent,
+  AiSqlVisibility,
 } from './ai';
+
+export {
+  AI_SQL_VISIBILITIES,
+} from './ai';
+
+export type {
+  AiSettings,
+  UpdateAiSettingsRequest,
+} from './system-settings';
 
 export type {
   AiConversationKind,

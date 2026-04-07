@@ -1,3 +1,5 @@
+import type { AiSqlVisibility } from '@fullstack/shared';
+
 export interface AiSqlUserContext {
   sub: string;
   role: 'admin' | 'user';
@@ -18,3 +20,9 @@ export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
+
+export interface SqlVisibilityContext {
+  role: 'admin' | 'user';
+}
+
+export type { AiSqlVisibility };
