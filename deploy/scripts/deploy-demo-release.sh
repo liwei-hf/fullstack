@@ -179,10 +179,11 @@ cd "${TARGET_RELEASE}"
 pnpm install --frozen-lockfile --filter @fullstack/server...
 pnpm --filter @fullstack/server prisma generate
 
-ln -sfn "${TARGET_RELEASE}" "${CURRENT_LINK}"
+  ln -sfn "${TARGET_RELEASE}" "${CURRENT_LINK}"
 
-SERVER_PATH="${SERVER_PATH}" pm2 startOrReload "${CURRENT_LINK}/deploy/pm2/ecosystem.config.cjs" --only "${PM2_APP_NAME}" --update-env
-pm2 save
+  pm2 delete "${PM2_APP_NAME}" >/dev/null 2>&1 || true
+  SERVER_PATH="${SERVER_PATH}" pm2 start "${CURRENT_LINK}/deploy/pm2/ecosystem.config.cjs" --only "${PM2_APP_NAME}" --update-env
+  pm2 save
 
 # 仅保留最近几次发布，避免单机演示环境长期堆积旧产物。
 find "${RELEASES_DIR}" -mindepth 1 -maxdepth 1 -type d | sort | head -n -"${KEEP_RELEASES}" 2>/dev/null | xargs -r rm -rf
