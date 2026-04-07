@@ -11,23 +11,6 @@ import { api } from '@/utils/api';
 import { useAuthStore } from '@/store/auth-store';
 import { Bot, Database, Loader2, MessageSquareText, ShieldCheck } from 'lucide-react';
 
-interface LoginResponse {
-  user: {
-    id: string;
-    username: string;
-    phone: string;
-    role: 'admin' | 'user';
-    status: 'active' | 'disabled';
-    clientType: 'admin' | 'mobile';
-    sessionId: string;
-  };
-  tokens: {
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
-  };
-}
-
 /**
  * 登录页
  *
@@ -47,11 +30,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await api.post<LoginResponse>('/auth/login', {
-        account,
-        password,
-        clientType: 'admin',
-      });
+      const response = await api.loginAdmin(account, password);
 
       setAuth(response.user, response.tokens.accessToken, response.tokens.refreshToken);
       navigate('/');

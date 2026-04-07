@@ -1,6 +1,7 @@
 /**
  * 请求封装
  */
+import type { AuthResponse } from '@fullstack/shared'
 import { AUTH_STORAGE_KEY } from '@/store/auth-store'
 import { pinia } from '@/store'
 import type { UserInfo } from '@/store/auth-store'
@@ -236,4 +237,21 @@ export const api = {
   put: <T>(url: string, data?: any) => request<T>({ url, method: 'PUT', data }),
   delete: <T>(url: string) => request<T>({ url, method: 'DELETE' }),
   patch: <T>(url: string, data?: any) => request<T>({ url, method: 'PATCH', data }),
+  /**
+   * 移动端登录
+   *
+   * H5/移动端统一由请求层补上 mobile 客户端类型，
+   * 页面只负责提交账号密码，避免把端类型判断散落到业务组件里。
+   */
+  loginMobile: (account: string, password: string, deviceId?: string) =>
+    request<AuthResponse>({
+      url: '/auth/login',
+      method: 'POST',
+      data: {
+        account,
+        password,
+        clientType: 'mobile',
+        ...(deviceId ? { deviceId } : {}),
+      },
+    }),
 }

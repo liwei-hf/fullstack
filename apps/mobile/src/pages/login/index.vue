@@ -59,23 +59,6 @@ import { useAuthStore } from '@/store/auth-store'
 import { api } from '@/utils/request'
 import { showToast } from '@/utils/toast'
 
-interface LoginResponse {
-  user: {
-    id: string
-    username: string
-    phone: string
-    role: 'admin' | 'user'
-    status: 'active' | 'disabled'
-    clientType: 'admin' | 'mobile'
-    sessionId: string
-  }
-  tokens: {
-    accessToken: string
-    refreshToken: string
-    expiresIn: number
-  }
-}
-
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -95,11 +78,7 @@ const handleLogin = async () => {
   loading.value = true
 
   try {
-    const response = await api.post<LoginResponse>('/auth/login', {
-      account: account.value,
-      password: password.value,
-      clientType: 'mobile',
-    })
+    const response = await api.loginMobile(account.value, password.value)
 
     authStore.setAuth(response.user, response.tokens.accessToken, response.tokens.refreshToken)
     router.push('/index')

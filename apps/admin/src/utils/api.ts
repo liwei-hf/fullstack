@@ -14,7 +14,7 @@
  * await api.patch(`/admin/users/${id}`, { status: 'active' });
  * ```
  */
-import type { CurrentUser } from '@fullstack/shared';
+import type { CurrentUser, AuthResponse } from '@fullstack/shared';
 import { useAuthStore } from '@/store/auth-store';
 
 const API_BASE_URL = '/api';
@@ -129,6 +129,20 @@ export class ApiClient {
       method: 'POST',
       body: formData,
       headers: {},
+    });
+  }
+
+  /**
+   * 管理端登录
+   *
+   * 管理后台始终走 admin 客户端类型，但这个约束应该收敛在请求层，
+   * 不让页面组件自己到处传字面量，避免后续出现多处散落和改漏。
+   */
+  async loginAdmin(account: string, password: string): Promise<AuthResponse> {
+    return this.post<AuthResponse>('/auth/login', {
+      account,
+      password,
+      clientType: 'admin',
     });
   }
 
