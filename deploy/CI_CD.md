@@ -80,11 +80,19 @@ chmod 600 ~/.ssh/authorized_keys
 
 - [build-demo-release.sh](/Users/liwei/self/fullstack/deploy/scripts/build-demo-release.sh)
 - [deploy-demo-release.sh](/Users/liwei/self/fullstack/deploy/scripts/deploy-demo-release.sh)
+- [render-demo-nginx.sh](/Users/liwei/self/fullstack/deploy/scripts/render-demo-nginx.sh)
+- [sync-demo-nginx.sh](/Users/liwei/self/fullstack/deploy/scripts/sync-demo-nginx.sh)
 
 本地如果你也想复用同一套免密发布方式，可以直接指定部署私钥：
 
 ```bash
 SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy SERVER_HOST=47.83.123.25 SERVER_USER=root pnpm deploy:release
+```
+
+如果你改了仓库里的 Nginx 模板，同样可以直接同步：
+
+```bash
+DOMAIN=liwei.it.com SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy SERVER_HOST=47.83.123.25 SERVER_USER=root pnpm deploy:nginx
 ```
 
 ## 5. 适合你当前项目的原因

@@ -148,8 +148,11 @@ const handleLogin = async () => {
 
 <style scoped>
 .login-page {
+  box-sizing: border-box;
   min-height: 100vh;
-  padding: 28px 18px 24px;
+  min-height: 100svh;
+  min-height: 100dvh;
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
   background:
     radial-gradient(circle at top left, rgba(111, 162, 255, 0.28), transparent 30%),
     radial-gradient(circle at bottom right, rgba(165, 199, 255, 0.34), transparent 24%),
@@ -161,7 +164,7 @@ const handleLogin = async () => {
 
 .login-shell {
   width: min(100%, 360px);
-  padding: 14px;
+  padding: 12px;
   border-radius: 30px;
   background: rgba(255, 255, 255, 0.48);
   box-shadow: 0 24px 56px rgba(78, 108, 171, 0.14);
@@ -172,7 +175,7 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 24px 20px 0;
+  padding: 22px 18px 0;
 }
 
 .brand-mark {
@@ -198,16 +201,16 @@ const handleLogin = async () => {
 
 .brand-title {
   margin: 0;
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 700;
   color: #20304f;
 }
 
 .brand-subtitle {
-  margin: 12px 0 22px;
-  padding: 0 20px;
+  margin: 10px 0 18px;
+  padding: 0 18px;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.6;
   color: #7182a4;
 }
 
@@ -216,7 +219,7 @@ const handleLogin = async () => {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 16px 34px rgba(105, 124, 166, 0.1);
-  padding: 18px;
+  padding: 16px;
   margin: 0 6px;
 }
 
@@ -296,6 +299,65 @@ const handleLogin = async () => {
 
 .login-btn-loading {
   opacity: 0.86;
+}
+
+@media (max-width: 390px), (max-height: 780px) {
+  .login-page {
+    padding: calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .login-shell {
+    width: 100%;
+    padding: 10px;
+    border-radius: 24px;
+  }
+
+  .brand-row {
+    gap: 12px;
+    padding: 18px 16px 0;
+  }
+
+  .brand-mark {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 15px;
+  }
+
+  .brand-label {
+    margin-bottom: 2px;
+  }
+
+  .brand-title {
+    font-size: 24px;
+  }
+
+  .brand-subtitle {
+    margin: 8px 0 16px;
+    padding: 0 16px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .form-card {
+    border-radius: 20px;
+    padding: 14px;
+    margin: 0 4px;
+  }
+
+  .field-item + .field-item {
+    margin-top: 12px;
+  }
+
+  .field-input,
+  .login-btn {
+    height: 44px;
+    font-size: 14px;
+  }
+
+  .login-btn {
+    margin-top: 16px;
+  }
 }
 
 .spinner {

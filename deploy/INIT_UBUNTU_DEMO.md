@@ -141,21 +141,13 @@ pm2 startup
 ## 11. 配 Nginx
 
 ```bash
-sudo cp deploy/nginx/fullstack-demo.conf /etc/nginx/conf.d/fullstack-demo.conf
+DOMAIN=example.com SERVER_HOST=<你的服务器IP> SERVER_USER=root SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy pnpm deploy:nginx
 ```
 
-把里面的：
-
-- `admin.example.com`
-- `m.example.com`
-
-替换成你的域名。
-
-然后：
+如果你只想先看看渲染后的配置：
 
 ```bash
-sudo nginx -t
-sudo systemctl reload nginx
+DOMAIN=example.com bash deploy/scripts/render-demo-nginx.sh
 ```
 
 ---
@@ -181,8 +173,8 @@ docker compose -f deploy/docker-compose.demo.yml ps
 
 打开：
 
-- `https://admin.example.com`
-- `https://m.example.com`
+- `https://example.com`
+- `https://example.com/m/`
 
 确认：
 

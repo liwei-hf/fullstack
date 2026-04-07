@@ -22,8 +22,10 @@ import { AiModule } from './ai/ai.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { RedisModule } from './redis/redis.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     // ConfigModule.forRoot: 全局配置管理
     ConfigModule.forRoot({

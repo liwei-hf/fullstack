@@ -20,6 +20,7 @@
 
 set -euo pipefail
 export COPYFILE_DISABLE=1
+export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -76,12 +77,22 @@ cp -R apps/mobile/dist-m "${RELEASE_ROOT}/apps/mobile/dist-m"
 
 cp deploy/pm2/ecosystem.config.cjs "${RELEASE_ROOT}/deploy/pm2/ecosystem.config.cjs"
 find "${RELEASE_ROOT}" -name '._*' -delete
+
+# macOS 下源码目录可能带有 com.apple.provenance 等扩展属性，
+# 这里在打包前统一清理，避免服务器解压时出现大段 xattr 警告。
+if [[ "$(uname -s)" == "Darwin" ]] && command -v xattr >/dev/null 2>&1; then
+  xattr -rc "${RELEASE_ROOT}" || true
+fi
 echo -e "  ✓ 已完成发布目录收集${NC}"
 echo ""
 
 echo -e "${YELLOW}[3/4] 生成发布包...${NC}"
 rm -f "${OUTPUT_TAR}"
-tar -czf "${OUTPUT_TAR}" -C "${RELEASE_TMP_DIR}" "${RELEASE_NAME}"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  tar --no-mac-metadata -czf "${OUTPUT_TAR}" -C "${RELEASE_TMP_DIR}" "${RELEASE_NAME}"
+else
+  tar -czf "${OUTPUT_TAR}" -C "${RELEASE_TMP_DIR}" "${RELEASE_NAME}"
+fi
 echo -e "  ✓ 发布包路径：${GREEN}${OUTPUT_TAR}${NC}"
 echo ""
 

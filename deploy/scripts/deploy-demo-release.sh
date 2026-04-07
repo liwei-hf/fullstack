@@ -31,6 +31,9 @@ PM2_APP_NAME="${PM2_APP_NAME:-fullstack-server}"
 RELEASE_NAME="${RELEASE_NAME:-fullstack-demo-release}"
 REMOTE_TAR="${REMOTE_TAR:-/tmp/${RELEASE_NAME}.tar.gz}"
 OUTPUT_TAR="${OUTPUT_TAR:-/tmp/${RELEASE_NAME}.tar.gz}"
+KEEP_RELEASES="${KEEP_RELEASES:-5}"
+SYNC_NGINX="${SYNC_NGINX:-false}"
+DOMAIN="${DOMAIN:-}"
 SSH_PASSWORD="${SSH_PASSWORD:-}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-}"
 REMOTE_SCRIPT_PATH="/tmp/fullstack-deploy-release-remote.sh"
@@ -106,6 +109,11 @@ if [[ -n "${SSH_KEY_PATH}" && ! -f "${SSH_KEY_PATH}" ]]; then
   exit 1
 fi
 
+if [[ "${SYNC_NGINX}" == "true" || "${SYNC_NGINX}" == "1" ]] && [[ -z "${DOMAIN}" ]]; then
+  echo -e "${RED}错误：SYNC_NGINX 启用时必须提供 DOMAIN${NC}"
+  exit 1
+fi
+
 echo -e "${YELLOW}[1/4] 构建发布包...${NC}"
 (
   cd "${PROJECT_ROOT}"
@@ -124,56 +132,78 @@ trap 'rm -f "${REMOTE_SCRIPT}"' EXIT
 cat > "${REMOTE_SCRIPT}" <<'EOF'
 set -euo pipefail
 
-RELEASE_DIR="${SERVER_PATH}/${RELEASE_NAME}"
+CURRENT_LINK="${SERVER_PATH}/current"
+RELEASES_DIR="${SERVER_PATH}/releases"
+SHARED_DIR="${SERVER_PATH}/shared"
+RELEASE_ID="$(date +%Y%m%d%H%M%S)"
+TARGET_RELEASE="${RELEASES_DIR}/${RELEASE_ID}-${RELEASE_NAME}"
+TMP_EXTRACT_DIR="$(mktemp -d /tmp/fullstack-release-extract.XXXXXX)"
+
+cleanup() {
+  rm -rf "${TMP_EXTRACT_DIR}"
+}
+trap cleanup EXIT
 
 if [[ ! -d "${SERVER_PATH}" ]]; then
   echo "远程目录不存在：${SERVER_PATH}" >&2
   exit 1
 fi
 
-if [[ ! -f "${SERVER_PATH}/apps/server/.env" ]]; then
+mkdir -p "${RELEASES_DIR}" "${SHARED_DIR}"
+
+if [[ -f "${CURRENT_LINK}/apps/server/.env" ]]; then
+  cp "${CURRENT_LINK}/apps/server/.env" "${SHARED_DIR}/server.env"
+elif [[ -f "${SERVER_PATH}/apps/server/.env" ]]; then
+  # 兼容旧版“直接铺在根目录”的部署结构，第一次切到 releases/current 时复用原有 .env
+  cp "${SERVER_PATH}/apps/server/.env" "${SHARED_DIR}/server.env"
+fi
+
+if [[ ! -f "${SHARED_DIR}/server.env" ]]; then
   echo "未找到远程 apps/server/.env，请先完成首次部署" >&2
   exit 1
 fi
 
-mkdir -p /tmp/fullstack-release-backup
-cp "${SERVER_PATH}/apps/server/.env" /tmp/fullstack-release-backup/server.env
+tar -xzf "${REMOTE_TAR}" -C "${TMP_EXTRACT_DIR}"
 
-find "${SERVER_PATH}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-tar -xzf "${REMOTE_TAR}" -C "${SERVER_PATH}"
-
-if [[ ! -d "${RELEASE_DIR}" ]]; then
-  echo "发布包目录不存在：${RELEASE_DIR}" >&2
+if [[ ! -d "${TMP_EXTRACT_DIR}/${RELEASE_NAME}" ]]; then
+  echo "发布包目录不存在：${TMP_EXTRACT_DIR}/${RELEASE_NAME}" >&2
   exit 1
 fi
 
-# 将 release 目录中的内容提升到项目根目录，便于继续复用现有 PM2/Nginx 路径。
-find "${RELEASE_DIR}" -mindepth 1 -maxdepth 1 -exec mv {} "${SERVER_PATH}/" \;
-rmdir "${RELEASE_DIR}"
+mv "${TMP_EXTRACT_DIR}/${RELEASE_NAME}" "${TARGET_RELEASE}"
+cp "${SHARED_DIR}/server.env" "${TARGET_RELEASE}/apps/server/.env"
+find "${TARGET_RELEASE}" -name '._*' -delete
 
-cp /tmp/fullstack-release-backup/server.env "${SERVER_PATH}/apps/server/.env"
-find "${SERVER_PATH}" -name '._*' -delete
+cd "${TARGET_RELEASE}"
 
-cd "${SERVER_PATH}"
-
-# 这里只安装 server 及其 workspace 依赖，不再把整仓源码放到服务器。
-# 这里不加 --prod，是因为纯产物部署下 Prisma 仍需要 CLI 生成运行时代码。
 pnpm install --frozen-lockfile --filter @fullstack/server...
-# Prisma Client 运行时代码不会随 dist 一起产出，纯产物部署时需要在服务器重新生成一次。
 pnpm --filter @fullstack/server prisma generate
 
-if pm2 describe "${PM2_APP_NAME}" >/dev/null 2>&1; then
-  pm2 restart "${PM2_APP_NAME}"
-else
-  pm2 start deploy/pm2/ecosystem.config.cjs
-fi
+ln -sfn "${TARGET_RELEASE}" "${CURRENT_LINK}"
+
+SERVER_PATH="${SERVER_PATH}" pm2 startOrReload "${CURRENT_LINK}/deploy/pm2/ecosystem.config.cjs" --only "${PM2_APP_NAME}" --update-env
 pm2 save
+
+# 仅保留最近几次发布，避免单机演示环境长期堆积旧产物。
+find "${RELEASES_DIR}" -mindepth 1 -maxdepth 1 -type d | sort | head -n -"${KEEP_RELEASES}" 2>/dev/null | xargs -r rm -rf
 EOF
 run_remote_copy "${REMOTE_SCRIPT}" "${SERVER_USER}@${SERVER_HOST}:${REMOTE_SCRIPT_PATH}"
 run_remote_command "${SERVER_USER}@${SERVER_HOST}" \
-  "SERVER_PATH='${SERVER_PATH}' PM2_APP_NAME='${PM2_APP_NAME}' RELEASE_NAME='${RELEASE_NAME}' REMOTE_TAR='${REMOTE_TAR}' bash '${REMOTE_SCRIPT_PATH}' && rm -f '${REMOTE_SCRIPT_PATH}'"
+  "SERVER_PATH='${SERVER_PATH}' PM2_APP_NAME='${PM2_APP_NAME}' RELEASE_NAME='${RELEASE_NAME}' REMOTE_TAR='${REMOTE_TAR}' KEEP_RELEASES='${KEEP_RELEASES}' bash '${REMOTE_SCRIPT_PATH}' && rm -f '${REMOTE_SCRIPT_PATH}'"
 echo -e "  ✓ 服务器已完成发布包部署${NC}"
 echo ""
+
+if [[ "${SYNC_NGINX}" == "true" || "${SYNC_NGINX}" == "1" ]]; then
+  echo -e "${YELLOW}[可选] 同步 Nginx 配置...${NC}"
+  DOMAIN="${DOMAIN}" \
+  SERVER_HOST="${SERVER_HOST}" \
+  SERVER_USER="${SERVER_USER}" \
+  SERVER_PATH="${SERVER_PATH}" \
+  SSH_PASSWORD="${SSH_PASSWORD}" \
+  SSH_KEY_PATH="${SSH_KEY_PATH}" \
+  bash "${PROJECT_ROOT}/deploy/scripts/sync-demo-nginx.sh"
+  echo ""
+fi
 
 echo -e "${YELLOW}[4/4] 基础验证...${NC}"
 curl -I --max-time 15 "http://${SERVER_HOST}/"
@@ -181,9 +211,7 @@ echo ""
 curl -I --max-time 15 "http://${SERVER_HOST}/m/"
 echo ""
 curl -sS --max-time 15 -o /tmp/fullstack-release-api.out -w '%{http_code}' \
-  "http://${SERVER_HOST}/api/auth/refresh" \
-  -H 'content-type: application/json' \
-  --data '{"refreshToken":"release-check"}'
+  "http://${SERVER_HOST}/api/health"
 echo ""
 head -c 200 /tmp/fullstack-release-api.out
 echo ""

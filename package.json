@@ -19,6 +19,7 @@
     "db:seed": "pnpm --filter=@fullstack/server prisma db seed",
     "db:migrate": "pnpm --filter=@fullstack/server prisma migrate dev",
     "deploy:sync": "bash deploy/scripts/sync-demo-server.sh",
+    "deploy:nginx": "bash deploy/scripts/sync-demo-nginx.sh",
     "deploy:release:build": "bash deploy/scripts/build-demo-release.sh",
     "deploy:release": "bash deploy/scripts/deploy-demo-release.sh"
   },

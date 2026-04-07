@@ -53,12 +53,13 @@
 
 ## 3. 建议域名
 
-为了避免两个前端静态资源路径冲突，建议分两个域名：
+你当前仓库已经落到“单域名 + 路径分流”的方案，推荐这样部署：
 
-- 管理端：`admin.example.com`
-- 手机端 H5：`m.example.com`
+- 管理端：`https://example.com/`
+- 手机端 H5：`https://example.com/m/`
+- API：`https://example.com/api`
 
-后端 API 不单独暴露域名，统一通过各自域名下的 `/api` 转发。
+这样更适合演示环境，也能避免多子域名下的 CORS 与证书维护成本。
 
 ---
 
@@ -74,7 +75,7 @@
 
 ```bash
 /var/www/fullstack/apps/admin/dist
-/var/www/fullstack/apps/mobile/dist
+/var/www/fullstack/apps/mobile/dist-m
 /var/www/fullstack/apps/server
 ```
 
@@ -136,10 +137,10 @@ cp apps/server/.env.production.example apps/server/.env
 - `MINIO_SECRET_KEY`
 - `CORS_ORIGINS`
 
-如果你走演示部署，`CORS_ORIGINS` 可以写：
+如果你走当前这套单域名演示部署，`CORS_ORIGINS` 可以写：
 
 ```bash
-CORS_ORIGINS=https://admin.example.com,https://m.example.com
+CORS_ORIGINS=https://example.com
 ```
 
 ---
@@ -168,7 +169,7 @@ pnpm build
 构建后：
 
 - 管理端产物：`apps/admin/dist`
-- 手机端 H5 产物：`apps/mobile/dist`
+- 手机端 H5 产物：`apps/mobile/dist-m`
 - 后端产物：`apps/server/dist`
 
 ---
@@ -205,26 +206,27 @@ pm2 logs fullstack-server
 
 ## 11. 配置 Nginx
 
-使用仓库里的示例：
-
-```bash
-sudo cp deploy/nginx/fullstack-demo.conf /etc/nginx/conf.d/fullstack-demo.conf
-```
-
-然后把配置里的域名改成你自己的：
-
-- `admin.example.com`
-- `m.example.com`
-
-Nginx 配置文件位置：
+仓库里维护的是一份正式模板：
 
 - [fullstack-demo.conf](/Users/liwei/self/fullstack/deploy/nginx/fullstack-demo.conf)
 
-检查并重载：
+推荐直接通过脚本渲染并同步到服务器：
 
 ```bash
-sudo nginx -t
-sudo systemctl reload nginx
+DOMAIN=example.com SERVER_HOST=your.server.ip SERVER_USER=root SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy pnpm deploy:nginx
+```
+
+这条命令会：
+
+1. 把模板里的域名、证书路径、部署路径渲染成正式配置
+2. 上传到服务器 `/etc/nginx/conf.d/fullstack-ip.conf`
+3. 自动执行 `nginx -t`
+4. 自动 `reload nginx`
+
+如果你只是想本地预览渲染后的配置，也可以执行：
+
+```bash
+DOMAIN=example.com bash deploy/scripts/render-demo-nginx.sh
 ```
 
 ---
@@ -240,12 +242,10 @@ sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx
 ```
 
-分别给：
+给根域名和 `www` 申请即可：
 
-- `admin.example.com`
-- `m.example.com`
-
-申请证书。
+- `example.com`
+- `www.example.com`
 
 ---
 
@@ -254,7 +254,7 @@ sudo certbot --nginx
 上线后至少检查：
 
 1. 管理端能打开登录页
-2. 手机端 H5 能打开首页
+2. 手机端 H5 能通过 `/m/` 打开首页
 3. 管理端登录成功
 4. 手机端登录成功
 5. 知识库上传普通文档成功
