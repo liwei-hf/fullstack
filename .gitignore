@@ -4,8 +4,12 @@ node_modules/
 
 # Build output
 dist/
+dist-m/
 .next/
 unpackage/
+apps/**/dist/
+apps/**/dist-m/
+packages/**/dist/
 
 # Environment
 .env
@@ -31,7 +35,13 @@ pnpm-debug.log*
 
 # Turbo
 .turbo/
+apps/**/.turbo/
+packages/**/.turbo/
 
 # Prisma
 prisma/*.db
 prisma/*.db-journal
+
+# Local backups and release artifacts
+.backup/
+*.tar.gz
