@@ -28,12 +28,14 @@ export interface DefaultKnowledgeBasePromptTemplateDefinition {
 export function buildKnowledgeBaseAnswerVariables(input: {
   question: string;
   contextText: string;
-  historyText?: string;
+  answerHistoryText?: string;
+  conversationSummaryText?: string;
 }) {
   return {
     question: input.question,
     contextText: input.contextText,
-    historyText: input.historyText ?? '',
+    answerHistoryText: input.answerHistoryText ?? '',
+    conversationSummaryText: input.conversationSummaryText ?? '',
   };
 }
 
@@ -45,11 +47,13 @@ export function buildKnowledgeBaseAnswerVariables(input: {
  */
 export function buildKnowledgeBaseRetrievalRewriteVariables(input: {
   question: string;
-  historyText?: string;
+  retrievalHistoryText?: string;
+  conversationSummaryText?: string;
 }) {
   return {
     question: input.question,
-    historyText: input.historyText ?? '',
+    retrievalHistoryText: input.retrievalHistoryText ?? '',
+    conversationSummaryText: input.conversationSummaryText ?? '',
   };
 }
 
@@ -104,6 +108,7 @@ export const KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE: DefaultKnowledgeBasePromptT
     '你只能依据当前提供的知识库上下文回答，不能编造事实，不能把常识当成文档结论。',
     '回答时先给直接结论，再补充关键依据、适用条件和边界。',
     '如果问题包含简称、口语叫法或模糊称呼，可以先在当前上下文内做术语归一化，再继续回答。',
+    '如果用户当前问题依赖前面对话里的“这个 / 它 / 上一个结论”等指代，优先结合会话主题摘要和最近对话还原真实意图。',
     '如果文档上下文不足以支撑明确答案，要直接说明“当前知识库信息不足，无法确认”，不要硬猜。',
     '如果问题可能存在多种场景、例外情况或前置条件，要明确分点说明，不要把不同情况混为一谈。',
     '如果引用来源已经由界面单独展示，正文中不要重复堆砌引用格式，而要把重点放在结论和解释上。',
@@ -113,8 +118,11 @@ export const KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE: DefaultKnowledgeBasePromptT
   userPromptTemplate: [
     '用户问题：{{question}}',
     '',
-    '最近对话上下文：',
-    '{{historyText}}',
+    '会话主题摘要：',
+    '{{conversationSummaryText}}',
+    '',
+    '最近相关对话：',
+    '{{answerHistoryText}}',
     '',
     '知识库上下文：',
     '{{contextText}}',
@@ -122,7 +130,8 @@ export const KNOWLEDGE_BASE_ANSWER_DEFAULT_TEMPLATE: DefaultKnowledgeBasePromptT
   variablesSchema: {
     question: 'string',
     contextText: 'string',
-    historyText: 'string',
+    answerHistoryText: 'string',
+    conversationSummaryText: 'string',
   },
 };
 
@@ -136,12 +145,16 @@ export const KNOWLEDGE_BASE_RETRIEVAL_REWRITE_DEFAULT_TEMPLATE: DefaultKnowledge
     '你的任务不是回答问题，而是把当前问题改写成适合知识库检索的独立问题。',
     '如果当前问题已经完整、明确、适合直接检索，就原样返回，不要改写。',
     '如果当前问题依赖最近对话中的指代、简称、上下文主题或省略信息，要补全为完整问题。',
+    '优先利用会话主题摘要判断当前连续追问的主语、对象、文档主题和限定条件。',
     '改写时只能基于最近对话上下文补全，不要凭空添加知识库中未出现的新事实。',
     '输出必须只有一行最终检索问题，不要解释，不要加前缀，不要加引号，不要回答原问题。',
   ].join('\n'),
   userPromptTemplate: [
+    '会话主题摘要：',
+    '{{conversationSummaryText}}',
+    '',
     '最近对话上下文：',
-    '{{historyText}}',
+    '{{retrievalHistoryText}}',
     '',
     '当前问题：{{question}}',
     '',
@@ -149,6 +162,7 @@ export const KNOWLEDGE_BASE_RETRIEVAL_REWRITE_DEFAULT_TEMPLATE: DefaultKnowledge
   ].join('\n'),
   variablesSchema: {
     question: 'string',
-    historyText: 'string',
+    retrievalHistoryText: 'string',
+    conversationSummaryText: 'string',
   },
 };

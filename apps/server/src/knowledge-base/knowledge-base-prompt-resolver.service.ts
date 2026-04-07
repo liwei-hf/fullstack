@@ -20,7 +20,8 @@ export class KnowledgeBasePromptResolverService {
   async resolveKnowledgeBaseAnswerPrompt(input: {
     question: string;
     contextText: string;
-    historyText?: string;
+    answerHistoryText?: string;
+    conversationSummaryText?: string;
     promptConfig: KnowledgeBasePromptConfig;
   }) {
     const resolvedPrompt = await this.promptService.resolvePrompt(
@@ -28,7 +29,8 @@ export class KnowledgeBasePromptResolverService {
       buildKnowledgeBaseAnswerVariables({
         question: input.question,
         contextText: input.contextText,
-        historyText: input.historyText,
+        answerHistoryText: input.answerHistoryText,
+        conversationSummaryText: input.conversationSummaryText,
       }),
     );
 
@@ -42,13 +44,15 @@ export class KnowledgeBasePromptResolverService {
 
   async resolveKnowledgeBaseRetrievalRewritePrompt(input: {
     question: string;
-    historyText?: string;
+    retrievalHistoryText?: string;
+    conversationSummaryText?: string;
   }) {
     return this.promptService.resolvePrompt(
       'knowledge_base_retrieval_rewrite' as never,
       buildKnowledgeBaseRetrievalRewriteVariables({
         question: input.question,
-        historyText: input.historyText,
+        retrievalHistoryText: input.retrievalHistoryText,
+        conversationSummaryText: input.conversationSummaryText,
       }),
     );
   }

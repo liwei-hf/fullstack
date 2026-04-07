@@ -1,3 +1,4 @@
+import type { Document } from '@langchain/core/documents';
 import type { Response } from 'express';
 
 // 从 JWT 中解析出的最小用户信息，供知识库模块内部复用。
@@ -25,6 +26,15 @@ export interface RetrievalCandidate {
   score: number;
 }
 
+export interface RetrievalDocumentMetadata {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  sequence: number;
+  score: number;
+  excerpt: string;
+}
+
 // 检索阶段的耗时指标，用于定位慢点是在 embedding、向量查询还是 rerank。
 export interface RagRetrievalMetrics {
   vectorSupportDurationMs: number;
@@ -42,6 +52,7 @@ export interface RagRetrievalMetrics {
 // 检索服务最终返回给问答服务的结构，包含候选、引用来源和上下文文本。
 export interface RagRetrievalResult {
   candidates: RetrievalCandidate[];
+  documents: Document<RetrievalDocumentMetadata>[];
   sources: Array<{
     documentId: string;
     documentName: string;

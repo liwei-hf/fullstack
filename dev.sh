@@ -21,16 +21,18 @@ API_PORT=3334
 ADMIN_PORT=3335
 MOBILE_PORT=3336
 REDIS_PORT=6379
+POSTGRES_PORT=5432
 
 check_port() {
     local port=$1
-    lsof -i :${port} &> /dev/null
+    lsof -tiTCP:${port} -sTCP:LISTEN &> /dev/null
 }
 
 free_port() {
     local port=$1
     local pid
-    pid=$(lsof -ti :${port})
+    # 只处理真正监听端口的进程，避免把访问开发服务的浏览器连接也误杀掉。
+    pid=$(lsof -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)
     if [ -n "$pid" ]; then
         echo -e "  ${YELLOW}检测到端口 ${port} 被进程 ${pid} 占用，正在释放...${NC}"
         kill -15 "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
@@ -41,6 +43,11 @@ free_port() {
         fi
     fi
     echo -e "  ✓ 端口 ${port}: ${GREEN}可用${NC}"
+}
+
+check_service_port() {
+    local port=$1
+    lsof -tiTCP:${port} -sTCP:LISTEN &> /dev/null
 }
 
 echo -e "${BLUE}============================================${NC}"
@@ -67,7 +74,25 @@ echo -e "  ✓ Node.js: ${GREEN}$(node -v)${NC}"
 echo -e "  ✓ pnpm: ${GREEN}$(pnpm -v)${NC}"
 echo ""
 
-echo -e "${YELLOW}[3/3] 启动开发服务（Turbo）...${NC}"
+echo -e "${YELLOW}[3/4] 检查基础依赖服务...${NC}"
+if check_service_port "${POSTGRES_PORT}"; then
+    echo -e "  ✓ PostgreSQL: ${GREEN}已启动${NC}（localhost:${POSTGRES_PORT}）"
+else
+    echo -e "  ${RED}错误：PostgreSQL 未启动${NC}（期望 localhost:${POSTGRES_PORT}）"
+    echo -e "  ${YELLOW}可执行：docker compose -f deploy/docker-compose.demo.yml up -d${NC}"
+    exit 1
+fi
+
+if check_service_port "${REDIS_PORT}"; then
+    echo -e "  ✓ Redis: ${GREEN}已启动${NC}（localhost:${REDIS_PORT}）"
+else
+    echo -e "  ${RED}错误：Redis 未启动${NC}（期望 localhost:${REDIS_PORT}）"
+    echo -e "  ${YELLOW}可执行：docker compose -f deploy/docker-compose.demo.yml up -d${NC}"
+    exit 1
+fi
+echo ""
+
+echo -e "${YELLOW}[4/4] 启动开发服务（Turbo）...${NC}"
 echo -e "  ${BLUE}后端 API:${NC}  http://localhost:${API_PORT}/api"
 echo -e "  ${BLUE}管理端:${NC}    http://localhost:${ADMIN_PORT}"
 echo -e "  ${BLUE}手机端 H5:${NC} http://localhost:${MOBILE_PORT}"

@@ -61,7 +61,8 @@ export const SQL_SCHEMA_DESCRIPTION = `
 export function buildSqlGenerationVariables(
   question: string,
   user: { sub: string; role: 'admin' | 'user' },
-  conversationHistoryText = '',
+  conversationSummaryText = '',
+  recentConversationText = '',
 ): Record<string, unknown> {
   const currentUserRules = `
 当前登录用户信息：
@@ -107,7 +108,8 @@ export function buildSqlGenerationVariables(
 
   return {
     question,
-    conversationHistoryText,
+    conversationSummaryText,
+    recentConversationText,
     currentUserRules,
     roleRules,
     sqlSchemaDescription: SQL_SCHEMA_DESCRIPTION.trim(),
@@ -128,7 +130,10 @@ export const SQL_GENERATION_DEFAULT_TEMPLATE: DefaultPromptTemplateDefinition = 
 默认最多返回 50 行。
 当用户提到“待办 / 进行中 / 已完成 / 完成了”等任务状态语义时，必须映射到 "Todo"."status" 的真实枚举值：'TODO'、'IN_PROGRESS'、'DONE'。
 最近对话上下文（如果有）只用于理解“那这个 / 继续 / 上一个结果”这类追问，不代表已经执行过新的 SQL：
-{{conversationHistoryText}}
+会话主题摘要：
+{{conversationSummaryText}}
+最近几轮对话：
+{{recentConversationText}}
 {{currentUserRules}}
 
 {{sqlGenerationExamples}}
@@ -138,7 +143,8 @@ export const SQL_GENERATION_DEFAULT_TEMPLATE: DefaultPromptTemplateDefinition = 
   userPromptTemplate: `{{question}}`,
   variablesSchema: {
     question: 'string',
-    conversationHistoryText: 'string',
+    conversationSummaryText: 'string',
+    recentConversationText: 'string',
     currentUserRules: 'string',
     roleRules: 'string',
     sqlSchemaDescription: 'string',
@@ -155,13 +161,15 @@ export function buildSqlAnswerVariables(input: {
   question: string;
   role: 'admin' | 'user';
   rows: Record<string, unknown>[];
-  conversationHistoryText?: string;
+  conversationSummaryText?: string;
+  recentConversationText?: string;
 }) {
   return {
     question: input.question,
     role: input.role,
     rowsJson: JSON.stringify(input.rows),
-    conversationHistoryText: input.conversationHistoryText ?? '',
+    conversationSummaryText: input.conversationSummaryText ?? '',
+    recentConversationText: input.recentConversationText ?? '',
   };
 }
 
@@ -182,8 +190,10 @@ ${buildCommonInsufficientInfoRules()}
   userPromptTemplate: `
 用户角色：{{role}}
 用户问题：{{question}}
-最近对话上下文：
-{{conversationHistoryText}}
+会话主题摘要：
+{{conversationSummaryText}}
+最近几轮对话：
+{{recentConversationText}}
 查询结果 JSON：
 {{rowsJson}}
 `.trim(),
@@ -191,6 +201,7 @@ ${buildCommonInsufficientInfoRules()}
     question: 'string',
     role: 'string',
     rowsJson: 'string',
-    conversationHistoryText: 'string',
+    conversationSummaryText: 'string',
+    recentConversationText: 'string',
   },
 };

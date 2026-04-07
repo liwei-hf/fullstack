@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AiConversationMessage, AiConversationSession, AiSqlSseEvent } from '@fullstack/shared';
-import { Trash2 } from 'lucide-react';
+import { ArrowDown, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Toaster } from '@/components/ui/toaster';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ExpandablePanel } from '@/components/expandable-panel';
 import { PageHeader } from '@/components/page-header';
 import { api } from '@/utils/api';
@@ -48,6 +49,7 @@ export default function SqlQueryPage() {
   });
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const currentSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? null,
@@ -96,6 +98,35 @@ export default function SqlQueryPage() {
       behavior: asking ? 'auto' : 'smooth',
     });
   }, [asking, latestMessageSignature]);
+
+  const updateScrollToBottomState = () => {
+    const viewport = messageViewportRef.current;
+    if (!viewport) {
+      setShowScrollToBottom(false);
+      return;
+    }
+
+    const distanceToBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    setShowScrollToBottom(distanceToBottom > 120);
+  };
+
+  const handleScrollToBottom = () => {
+    const viewport = messageViewportRef.current;
+    const end = messagesEndRef.current;
+    if (!viewport || !end) {
+      return;
+    }
+
+    end.scrollIntoView({
+      block: 'end',
+      behavior: 'smooth',
+    });
+  };
+
+  useEffect(() => {
+    updateScrollToBottomState();
+  }, [latestMessageSignature]);
 
   const updateSession = (sessionId: string, updater: (session: AiConversationSession) => AiConversationSession) => {
     setSessions((previous) => updateConversationSessionInList(previous, sessionId, updater));
@@ -296,69 +327,83 @@ export default function SqlQueryPage() {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-4 lg:flex lg:h-[calc(100vh-2rem)] lg:flex-col lg:overflow-hidden">
         <PageHeader
           title="智能问数"
-          description="通过自然语言生成 SQL、执行查询并组织结果说明。会话、Think 和 SQL 折叠区都保持与知识库问答同一套交互语言。"
-          actions={
-            <Button onClick={handleCreateSession} className="h-11 rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
-              新建会话
-            </Button>
-          }
+          description="通过自然语言生成 SQL、执行查询并组织结果说明。"
         />
 
-        <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
-          <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
-            <CardContent className="space-y-4 p-5">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-slate-900">会话列表</p>
-                <p className="text-xs leading-5 text-slate-500">智能问数会保存最近的连续追问上下文。</p>
+        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-stretch">
+          <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)] lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+            <CardContent className="space-y-4 p-5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+              <div className="space-y-3 lg:shrink-0">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">会话列表</p>
+                  <p className="text-xs leading-5 text-slate-500">智能问数会保存最近的连续追问上下文。</p>
+                </div>
+                <Button onClick={handleCreateSession} className="h-10 w-full rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
+                  新建会话
+                </Button>
               </div>
 
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={`rounded-[20px] border p-3 transition ${
-                    session.id === currentSession?.id
-                      ? 'border-blue-200 bg-blue-50/70'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectSession(session.id)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <p className="truncate text-sm font-semibold text-slate-900">{session.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                        {session.lastMessagePreview || '新会话，等待第一轮提问'}
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`删除会话 ${session.title}`}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white hover:text-rose-500"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteSession(session.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+              <div className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`rounded-[20px] border p-3 transition ${
+                      session.id === currentSession?.id
+                        ? 'border-blue-200 bg-blue-50/70'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSession(session.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="truncate text-sm font-semibold text-slate-900">{session.title}</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                          {session.lastMessagePreview || '新会话，等待第一轮提问'}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`删除会话 ${session.title}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white hover:text-rose-500"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteSession(session.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </CardContent>
           </Card>
 
-          <div className="flex min-h-[760px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
-            <div className="border-b border-slate-100 px-7 py-5">
-              <h2 className="text-xl font-semibold text-slate-900">{currentSession?.title || '智能问数'}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">先给结果解释，再为后续图表或表格扩展保留结构化展示区域。</p>
+          <div className="relative flex min-h-[760px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)] lg:h-full lg:min-h-0">
+            <div className="border-b border-slate-100 px-7 py-3 lg:shrink-0">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <h2 className="truncate text-xl font-semibold text-slate-900">
+                      {currentSession?.title || '智能问数'}
+                    </h2>
+                  </TooltipTrigger>
+                  <TooltipContent>{currentSession?.title || '智能问数'}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
 
-            <div ref={messageViewportRef} className="flex-1 space-y-6 overflow-y-auto px-7 py-7">
+            <div
+              ref={messageViewportRef}
+              onScroll={updateScrollToBottomState}
+              className="flex-1 space-y-6 overflow-y-auto px-7 py-7 lg:min-h-0"
+            >
               {currentSession?.messages.length ? (
                 currentSession.messages.map((message) => (
                   <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -403,10 +448,6 @@ export default function SqlQueryPage() {
                           </div>
                         ) : null}
 
-                        <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-4 text-sm text-slate-500">
-                          结果表格区域（预留）
-                        </div>
-
                         {message.errorMessage ? (
                           <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{message.errorMessage}</p>
                         ) : null}
@@ -415,11 +456,11 @@ export default function SqlQueryPage() {
                           <ExpandablePanel
                             title="SQL"
                             description="保留智能问数生成的 SQL，便于排查和讲解。"
-                            expanded={message.sqlExpanded !== false}
+                            expanded={message.sqlExpanded === true}
                             onToggle={() =>
                               updateMessage(currentSession.id, message.id, (current) => ({
                                 ...current,
-                                sqlExpanded: !current.sqlExpanded,
+                                sqlExpanded: current.sqlExpanded !== true,
                               }))
                             }
                           >
@@ -448,7 +489,22 @@ export default function SqlQueryPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-slate-100 bg-white px-7 py-5">
+            {showScrollToBottom ? (
+              <div className="pointer-events-none absolute bottom-[9.5rem] right-6 z-10 hidden lg:block">
+                <Button
+                  type="button"
+                  size="icon"
+                  aria-label="回到底部"
+                  title="回到底部"
+                  onClick={handleScrollToBottom}
+                  className="pointer-events-auto h-11 w-11 rounded-full bg-[#3B82F6] text-white shadow-[0_12px_28px_rgba(59,130,246,0.28)] hover:bg-blue-600"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
+
+            <div className="border-t border-slate-100 bg-white px-7 py-4 lg:shrink-0">
               <div className="mb-3 flex flex-wrap gap-2">
                 {EXAMPLES.map((example) => (
                   <button

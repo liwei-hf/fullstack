@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import {
+  MarkdownTextSplitter,
+  RecursiveCharacterTextSplitter,
+} from '@langchain/textsplitters';
 import type { KnowledgeBaseChunkStrategy } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -61,7 +65,7 @@ export class KnowledgeBaseIngestionService {
       });
 
       const chunkStrategy = fromPersistenceChunkStrategy(document.chunkStrategy);
-      const chunks = this.splitIntoChunks(parsed.content, chunkStrategy);
+      const chunks = await this.splitIntoChunks(parsed.content, chunkStrategy);
 
       await this.prisma.$transaction(async (tx) => {
         await tx.documentChunk.deleteMany({
@@ -78,6 +82,11 @@ export class KnowledgeBaseIngestionService {
               metadata: {
                 fileType: parsed.fileType,
                 chunkStrategy,
+                knowledgeBaseId: document.knowledgeBaseId,
+                documentId,
+                documentName: document.fileName,
+                sequence: index + 1,
+                excerpt: content.slice(0, RAG_SOURCE_SNIPPET_MAX_CHARS),
               },
             })),
           });
@@ -142,7 +151,7 @@ export class KnowledgeBaseIngestionService {
    * - 优先按段落切，再按句子切，最后退化到固定窗口
    * - 这样能满足 MVP 的上下文连续性，也不会额外引入更多依赖路径不稳定因素
    */
-  private splitIntoChunks(content: string, strategy: KnowledgeBaseChunkStrategy) {
+  private async splitIntoChunks(content: string, strategy: KnowledgeBaseChunkStrategy) {
     switch (strategy) {
       case 'paragraph':
         return this.splitByParagraph(content);
@@ -154,75 +163,71 @@ export class KnowledgeBaseIngestionService {
     }
   }
 
-  private splitByFixedSize(content: string) {
-    const chunks: string[] = [];
-    const step = Math.max(1, RAG_CHUNK_SIZE - RAG_CHUNK_OVERLAP);
+  private async splitByFixedSize(content: string) {
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: RAG_CHUNK_SIZE,
+      chunkOverlap: RAG_CHUNK_OVERLAP,
+      separators: [''],
+    });
 
-    for (let index = 0; index < content.length; index += step) {
-      const chunk = content.slice(index, index + RAG_CHUNK_SIZE).trim();
-      if (chunk) {
-        chunks.push(chunk);
-      }
-    }
-
-    return chunks;
+    return this.normalizeChunkTexts(await splitter.splitText(content));
   }
 
-  private splitByParagraph(content: string) {
-    const segments = content
-      .split(/\n{2,}/)
-      .map((item) => item.trim())
-      .filter(Boolean);
+  private async splitByParagraph(content: string) {
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: RAG_CHUNK_SIZE,
+      chunkOverlap: RAG_CHUNK_OVERLAP,
+      separators: ['\n\n', '\n', '。', '！', '？', '. ', '! ', '? ', '；', ';', '，', '、', ' ', ''],
+    });
 
-    const chunks: string[] = [];
-    let current = '';
+    return this.normalizeChunkTexts(await splitter.splitText(content));
+  }
 
-    const pushCurrent = () => {
-      if (current.trim()) {
-        chunks.push(current.trim());
-      }
-      current = '';
-    };
+  private async splitByHeading(content: string) {
+    const sections = this.splitSectionsByHeading(content);
+    if (sections.length === 0) {
+      return this.splitByParagraph(content);
+    }
 
-    for (const segment of segments) {
-      if (!segment) {
-        continue;
-      }
+    const markdownSplitter = new MarkdownTextSplitter({
+      chunkSize: RAG_CHUNK_SIZE,
+      chunkOverlap: RAG_CHUNK_OVERLAP,
+    });
+    const paragraphSplitter = new RecursiveCharacterTextSplitter({
+      chunkSize: RAG_CHUNK_SIZE,
+      chunkOverlap: RAG_CHUNK_OVERLAP,
+      separators: ['\n\n', '\n', '。', '！', '？', '. ', '! ', '? ', '；', ';', '，', '、', ' ', ''],
+    });
 
-      if ((current + '\n\n' + segment).trim().length <= RAG_CHUNK_SIZE) {
-        current = current ? `${current}\n\n${segment}` : segment;
-        continue;
-      }
+    const allChunks: string[] = [];
+    for (const section of sections) {
+      const normalizedSection = this.toMarkdownHeadingSection(section);
+      const splitSections = await markdownSplitter.splitText(normalizedSection);
 
-      pushCurrent();
-      if (segment.length <= RAG_CHUNK_SIZE) {
-        current = segment;
-        continue;
-      }
-
-      const sentences = segment.split(/(?<=[。！？.!?])\s*/).filter(Boolean);
-      for (const sentence of sentences) {
-        if ((current + sentence).length <= RAG_CHUNK_SIZE) {
-          current += sentence;
+      for (const chunk of splitSections) {
+        const restoredChunk = this.restoreArtificialMarkdownHeading(chunk);
+        if (restoredChunk.length <= RAG_CHUNK_SIZE) {
+          allChunks.push(restoredChunk);
           continue;
         }
 
-        pushCurrent();
-        if (sentence.length <= RAG_CHUNK_SIZE) {
-          current = sentence;
-          continue;
-        }
-
-        chunks.push(...this.splitByFixedSize(sentence));
-        current = '';
+        allChunks.push(...(await paragraphSplitter.splitText(restoredChunk)));
       }
     }
 
-    pushCurrent();
-    return chunks.filter(Boolean);
+    return this.normalizeChunkTexts(allChunks);
   }
 
-  private splitByHeading(content: string) {
+  private isHeadingLine(line: string) {
+    return (
+      /^#{1,6}\s+/.test(line) ||
+      /^第[\d一二三四五六七八九十百千]+[章节条]\s*/.test(line) ||
+      /^[\d]+(\.[\d]+)*[、.)．]?\s+/.test(line) ||
+      /^[一二三四五六七八九十百千]+[、.．]\s*/.test(line)
+    );
+  }
+
+  private splitSectionsByHeading(content: string) {
     const lines = content
       .split('\n')
       .map((line) => line.trim())
@@ -252,30 +257,49 @@ export class KnowledgeBaseIngestionService {
     }
 
     pushSection();
-
-    if (sections.length === 0) {
-      return this.splitByParagraph(content);
-    }
-
-    const chunks: string[] = [];
-    for (const section of sections) {
-      if (section.length <= RAG_CHUNK_SIZE) {
-        chunks.push(section);
-        continue;
-      }
-
-      chunks.push(...this.splitByParagraph(section));
-    }
-
-    return chunks.filter(Boolean);
+    return sections;
   }
 
-  private isHeadingLine(line: string) {
-    return (
-      /^#{1,6}\s+/.test(line) ||
-      /^第[\d一二三四五六七八九十百千]+[章节条]\s*/.test(line) ||
-      /^[\d]+(\.[\d]+)*[、.)．]?\s+/.test(line) ||
-      /^[一二三四五六七八九十百千]+[、.．]\s*/.test(line)
-    );
+  // MarkdownTextSplitter 更擅长吃 markdown heading，因此这里把中文编号标题
+  // 先标准化成 markdown 形式，再交给 LangChain 做真正的 chunk 切分。
+  private toMarkdownHeadingSection(section: string) {
+    return section
+      .split('\n')
+      .map((line) => {
+        if (!line.trim()) {
+          return '';
+        }
+
+        if (line.trim().startsWith('#')) {
+          return line;
+        }
+
+        if (this.isHeadingLine(line)) {
+          return `## ${line}`;
+        }
+
+        return line;
+      })
+      .join('\n');
+  }
+
+  private restoreArtificialMarkdownHeading(content: string) {
+    return content
+      .split('\n')
+      .map((line) => {
+        if (!line.startsWith('## ')) {
+          return line;
+        }
+
+        const normalizedLine = line.slice(3).trim();
+        return this.isHeadingLine(normalizedLine) ? normalizedLine : line;
+      })
+      .join('\n');
+  }
+
+  private normalizeChunkTexts(chunks: string[]) {
+    return chunks
+      .map((chunk) => chunk.trim())
+      .filter(Boolean);
   }
 }

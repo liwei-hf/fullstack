@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
+import { StringOutputParser } from '@langchain/core/output_parsers';
+import { RunnableLambda, RunnableSequence } from '@langchain/core/runnables';
 import { ChatOpenAI } from '@langchain/openai';
 import type {
   PromptTemplateCode,
@@ -17,12 +19,11 @@ import type {
 } from '@fullstack/shared';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { OpenAiCompatibleProvider } from './openai-compatible.provider';
 import {
   PROMPT_DEFAULT_DEFINITIONS,
   getPromptDefaultDefinition,
 } from './prompt-defaults.registry';
-import { interpolatePromptTemplate } from './prompt-template.util';
+import { buildResolvedChatMessages, interpolatePromptTemplate } from './prompt-template.util';
 
 type PromptUser = { sub: string; role: 'admin' | 'user' };
 
@@ -39,7 +40,6 @@ export class PromptService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly provider: OpenAiCompatibleProvider,
   ) {}
 
   async listTemplates(): Promise<PromptTemplateListItem[]> {
@@ -230,16 +230,16 @@ export class PromptService {
     if (template?.systemPrompt && template.userPromptTemplate) {
       return {
         source: 'database' as const,
-        systemPrompt: interpolatePromptTemplate(template.systemPrompt, variables),
-        userPrompt: interpolatePromptTemplate(template.userPromptTemplate, variables),
+        systemPrompt: await interpolatePromptTemplate(template.systemPrompt, variables),
+        userPrompt: await interpolatePromptTemplate(template.userPromptTemplate, variables),
       };
     }
 
     const fallback = getPromptDefaultDefinition(code);
     return {
       source: 'default' as const,
-      systemPrompt: interpolatePromptTemplate(fallback.systemPrompt, variables),
-      userPrompt: interpolatePromptTemplate(fallback.userPromptTemplate, variables),
+      systemPrompt: await interpolatePromptTemplate(fallback.systemPrompt, variables),
+      userPrompt: await interpolatePromptTemplate(fallback.userPromptTemplate, variables),
     };
   }
 
@@ -301,24 +301,35 @@ export class PromptService {
     code: PromptTemplateCode,
     resolvedPrompt: { systemPrompt: string; userPrompt: string },
   ) {
+    return this.createPromptTestChain(code).invoke(resolvedPrompt);
+  }
+
+  /**
+   * Prompt 测试台统一走 LangChain Runnable：
+   * - 便于和知识库问答链路保持同一套心智模型
+   * - 后续如果要接 tracing / fallback，只需要在这里扩展
+   */
+  private createPromptTestChain(code: PromptTemplateCode) {
+    return RunnableSequence.from([
+      RunnableLambda.from(this.formatResolvedPromptAsPromptValue.bind(this)),
+      this.createPromptTestModel(code),
+      new StringOutputParser(),
+    ]);
+  }
+
+  private createPromptTestModel(code: PromptTemplateCode) {
     if (
       code === 'knowledge_base_answer' ||
       code === ('knowledge_base_retrieval_rewrite' as PromptTemplateCode)
     ) {
-      const model = this.createKnowledgeBasePromptTestModel();
-      const response = await model.invoke(
-        [resolvedPrompt.systemPrompt, '', resolvedPrompt.userPrompt].join('\n\n'),
-      );
-      return this.extractText(response.content);
+      return this.createKnowledgeBasePromptTestModel();
     }
 
-    return this.provider.generateText({
+    return new ChatOpenAI({
       model: this.getPromptTestModel(code),
+      apiKey: this.configService.get<string>('OPENAI_API_KEY'),
+      configuration: this.buildConfiguration(this.configService.get<string>('OPENAI_BASE_URL')),
       temperature: code === 'sql_generation' ? 0.1 : 0.3,
-      messages: [
-        { role: 'system', content: resolvedPrompt.systemPrompt },
-        { role: 'user', content: resolvedPrompt.userPrompt },
-      ],
     });
   }
 
@@ -346,24 +357,11 @@ export class PromptService {
     });
   }
 
-  private extractText(content: unknown) {
-    if (typeof content === 'string') {
-      return content;
-    }
-
-    if (Array.isArray(content)) {
-      return content
-        .map((item) =>
-          typeof item === 'string'
-            ? item
-            : typeof item === 'object' && item && 'text' in item
-              ? String((item as { text?: unknown }).text ?? '')
-              : '',
-        )
-        .join('');
-    }
-
-    return String(content ?? '');
+  private async formatResolvedPromptAsPromptValue(input: {
+    systemPrompt: string;
+    userPrompt: string;
+  }) {
+    return buildResolvedChatMessages(input);
   }
 
   private ensureAdmin(user: PromptUser) {

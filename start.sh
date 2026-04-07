@@ -24,17 +24,19 @@ MOBILE_PORT=3336
 MINIO_API_PORT=9000
 MINIO_CONSOLE_PORT=9001
 REDIS_PORT=6379
+POSTGRES_PORT=5432
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 check_port() {
     local port=$1
-    lsof -i :${port} &> /dev/null
+    lsof -tiTCP:${port} -sTCP:LISTEN &> /dev/null
 }
 
 free_port() {
     local port=$1
-    local pid=$(lsof -ti :${port})
+    # 只处理真正监听端口的进程，避免把访问开发服务的浏览器连接也误杀掉。
+    local pid=$(lsof -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)
     if [ -n "$pid" ]; then
         echo -e "  ${YELLOW}警告：端口 ${port} 被进程 ${pid} 占用，正在释放...${NC}"
         kill -15 "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
@@ -47,6 +49,11 @@ free_port() {
     else
         echo -e "  ✓ 端口 ${port}: ${GREEN}可用${NC}"
     fi
+}
+
+check_service_port() {
+    local port=$1
+    lsof -tiTCP:${port} -sTCP:LISTEN &> /dev/null
 }
 
 echo -e "${BLUE}============================================${NC}"
@@ -93,7 +100,25 @@ else
 fi
 echo ""
 
-echo -e "${YELLOW}[3/5] 初始化项目配置与 Prisma...${NC}"
+echo -e "${YELLOW}[3/6] 检查基础依赖服务...${NC}"
+if check_service_port "${POSTGRES_PORT}"; then
+    echo -e "  ✓ PostgreSQL: ${GREEN}已启动${NC}（localhost:${POSTGRES_PORT}）"
+else
+    echo -e "  ${RED}错误：PostgreSQL 未启动${NC}（期望 localhost:${POSTGRES_PORT}）"
+    echo -e "  ${YELLOW}如使用仓库默认容器，请先执行：docker compose -f deploy/docker-compose.demo.yml up -d${NC}"
+    exit 1
+fi
+
+if check_service_port "${REDIS_PORT}"; then
+    echo -e "  ✓ Redis: ${GREEN}已启动${NC}（localhost:${REDIS_PORT}）"
+else
+    echo -e "  ${RED}错误：Redis 未启动${NC}（期望 localhost:${REDIS_PORT}）"
+    echo -e "  ${YELLOW}如使用仓库默认容器，请先执行：docker compose -f deploy/docker-compose.demo.yml up -d${NC}"
+    exit 1
+fi
+echo ""
+
+echo -e "${YELLOW}[4/6] 初始化项目配置与 Prisma...${NC}"
 
 if [ ! -f "apps/server/.env" ]; then
     echo -e "  ${YELLOW}未找到 apps/server/.env，正在从 .env.example 复制...${NC}"
@@ -112,7 +137,7 @@ pnpm run db:seed
 echo -e "  ${GREEN}数据库初始化完成${NC}"
 echo ""
 
-echo -e "${YELLOW}[4/5] 启动前提示...${NC}"
+echo -e "${YELLOW}[5/6] 启动前提示...${NC}"
 echo -e "  ${BLUE}后端 API:${NC}        http://localhost:${API_PORT}/api"
 echo -e "  ${BLUE}管理端:${NC}          http://localhost:${ADMIN_PORT}"
 echo -e "  ${BLUE}手机端 H5:${NC}       http://localhost:${MOBILE_PORT}"
@@ -126,6 +151,6 @@ echo -e "  ${YELLOW}默认账号：${NC}admin / Admin123456!"
 echo -e "  ${YELLOW}按 Ctrl+C 可以停止当前脚本拉起的开发服务${NC}"
 echo ""
 
-echo -e "${YELLOW}[5/5] 启动开发服务（Turbo）...${NC}"
+echo -e "${YELLOW}[6/6] 启动开发服务（Turbo）...${NC}"
 echo ""
 pnpm run dev

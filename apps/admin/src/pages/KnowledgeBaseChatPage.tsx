@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AiConversationMessage, AiConversationSession, KnowledgeBaseDetail, KnowledgeBaseItem, RagSseEvent } from '@fullstack/shared';
-import { Trash2 } from 'lucide-react';
+import { ArrowDown, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Toaster } from '@/components/ui/toaster';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ExpandablePanel } from '@/components/expandable-panel';
 import { PageHeader } from '@/components/page-header';
 import { api } from '@/utils/api';
@@ -45,6 +46,7 @@ export default function KnowledgeBaseChatPage() {
   const [question, setQuestion] = useState('');
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [sessions, setSessions] = useState<AiConversationSession[]>(() => {
     const loaded = loadConversationSessions('knowledge_base');
     return loaded.length > 0 ? loaded : [createConversationSession('knowledge_base')];
@@ -112,6 +114,34 @@ export default function KnowledgeBaseChatPage() {
       behavior: asking ? 'auto' : 'smooth',
     });
   }, [asking, latestMessageSignature]);
+
+  const updateScrollToBottomState = () => {
+    const viewport = messageViewportRef.current;
+    if (!viewport) {
+      setShowScrollToBottom(false);
+      return;
+    }
+
+    const distanceToBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    setShowScrollToBottom(distanceToBottom > 120);
+  };
+
+  const handleScrollToBottom = () => {
+    const end = messagesEndRef.current;
+    if (!end) {
+      return;
+    }
+
+    end.scrollIntoView({
+      block: 'end',
+      behavior: 'smooth',
+    });
+  };
+
+  useEffect(() => {
+    updateScrollToBottomState();
+  }, [latestMessageSignature]);
 
   const updateSession = (sessionId: string, updater: (session: AiConversationSession) => AiConversationSession) => {
     setSessions((previous) => updateConversationSessionInList(previous, sessionId, updater));
@@ -400,108 +430,122 @@ export default function KnowledgeBaseChatPage() {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-4 lg:flex lg:h-[calc(100vh-2rem)] lg:flex-col lg:overflow-hidden">
         <PageHeader
           title="知识库问答"
-          description="围绕同一份知识库连续追问，保留 Think、答案正文和引用来源，适合作为知识型 AI 助手的核心交互界面。"
-          actions={
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={selectedId} onValueChange={handleKnowledgeBaseChange}>
-                <SelectTrigger className="h-11 min-w-[240px] rounded-2xl border-slate-200 bg-white px-4 text-sm shadow-none focus:ring-blue-200">
-                  <SelectValue placeholder={knowledgeBases.length ? '选择知识库' : '暂无可问答知识库'} />
-                </SelectTrigger>
-                <SelectContent className="rounded-2xl border-slate-200">
-                  {knowledgeBases.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button onClick={handleCreateSession} className="h-11 rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
-                新建会话
-              </Button>
-            </div>
-          }
+          description="围绕同一份知识库连续追问，保留 Think、正文和引用来源。"
         />
 
-        <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
-          <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
-            <CardContent className="space-y-4 p-5">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-slate-900">会话列表</p>
-                <p className="text-xs leading-5 text-slate-500">当前仅展示所选知识库下的历史会话。</p>
+        <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-stretch">
+          <Card className="rounded-[24px] border-slate-200/80 shadow-[0_18px_40px_rgba(15,23,42,0.04)] lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+            <CardContent className="space-y-4 p-5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+              <div className="space-y-3 lg:shrink-0">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">会话列表</p>
+                  <p className="text-xs leading-5 text-slate-500">当前仅展示所选知识库下的历史会话。</p>
+                </div>
+                <Select value={selectedId} onValueChange={handleKnowledgeBaseChange}>
+                  <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white px-4 text-sm shadow-none focus:ring-blue-200">
+                    <SelectValue placeholder={knowledgeBases.length ? '选择知识库' : '暂无可问答知识库'} />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-2xl border-slate-200">
+                    {knowledgeBases.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleCreateSession} className="h-10 w-full rounded-2xl bg-[#3B82F6] hover:bg-blue-600">
+                  新建会话
+                </Button>
+                <div className="rounded-[20px] border border-slate-200/80 bg-slate-50/80 px-4 py-4">
+                  <p className="text-sm font-medium text-slate-900">
+                    {detail?.name || selectedItem?.name || '当前知识库'}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {detail?.description || '当前页面只负责基于知识库内容进行问答。'}
+                  </p>
+                  {selectedItem ? (
+                    <Badge variant="outline" className="mt-3 rounded-full border-blue-100 bg-blue-50 text-blue-600">
+                      文档 {selectedItem.readyDocumentCount}/{selectedItem.documentCount}
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
 
-              {visibleSessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={`rounded-[20px] border p-3 transition ${
-                    session.id === currentSession?.id
-                      ? 'border-blue-200 bg-blue-50/70'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectSession(session.id)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <p className="truncate text-sm font-semibold text-slate-900">{session.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                        {session.lastMessagePreview || '新会话，等待第一轮提问'}
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`删除会话 ${session.title}`}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white hover:text-rose-500"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteSession(session.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+              <div className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+                {visibleSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`rounded-[20px] border p-3 transition ${
+                      session.id === currentSession?.id
+                        ? 'border-blue-200 bg-blue-50/70'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSession(session.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="truncate text-sm font-semibold text-slate-900">{session.title}</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                          {session.lastMessagePreview || '新会话，等待第一轮提问'}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`删除会话 ${session.title}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-white hover:text-rose-500"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteSession(session.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
 
-              {!loadingKnowledgeBases && knowledgeBases.length === 0 ? (
-                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  还没有已上传文档的知识库，先去“知识库管理”上传文档后再来问答。
-                </div>
-              ) : null}
+                {!loadingKnowledgeBases && knowledgeBases.length === 0 ? (
+                  <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                    还没有已上传文档的知识库，先去“知识库管理”上传文档后再来问答。
+                  </div>
+                ) : null}
 
-              {visibleSessions.length === 0 && knowledgeBases.length > 0 ? (
-                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  当前知识库还没有历史会话，开始第一轮提问后会自动建立会话。
-                </div>
-              ) : null}
+                {visibleSessions.length === 0 && knowledgeBases.length > 0 ? (
+                  <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                    当前知识库还没有历史会话，开始第一轮提问后会自动建立会话。
+                  </div>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
 
-          <div className="flex min-h-[760px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)]">
-            <div className="border-b border-slate-100 px-7 py-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">
-                    {detail?.name || currentSession?.title || '知识库问答'}
-                  </h2>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                    {detail?.description || '当前页面只负责基于知识库内容进行问答。'}
-                  </p>
-                </div>
-                {selectedItem ? (
-                  <Badge variant="outline" className="rounded-full border-blue-100 bg-blue-50 text-blue-600">
-                    文档 {selectedItem.readyDocumentCount}/{selectedItem.documentCount}
-                  </Badge>
-                ) : null}
-              </div>
+          <div className="relative flex min-h-[760px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)] lg:h-full lg:min-h-0">
+            <div className="border-b border-slate-100 px-7 py-3 lg:shrink-0">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <h2 className="truncate text-xl font-semibold text-slate-900">
+                      {currentSession?.title || detail?.name || '知识库问答'}
+                    </h2>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {currentSession?.title || detail?.name || '知识库问答'}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
 
-            <div ref={messageViewportRef} className="flex-1 space-y-6 overflow-y-auto px-7 py-7">
+            <div
+              ref={messageViewportRef}
+              onScroll={updateScrollToBottomState}
+              className="flex-1 space-y-6 overflow-y-auto px-7 py-7 lg:min-h-0"
+            >
               {currentSession?.messages.length ? (
                 currentSession.messages.map((message) => (
                   <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -586,7 +630,22 @@ export default function KnowledgeBaseChatPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-slate-100 bg-white px-7 py-5">
+            {showScrollToBottom ? (
+              <div className="pointer-events-none absolute bottom-[9.5rem] right-6 z-10 hidden lg:block">
+                <Button
+                  type="button"
+                  size="icon"
+                  aria-label="回到底部"
+                  title="回到底部"
+                  onClick={handleScrollToBottom}
+                  className="pointer-events-auto h-11 w-11 rounded-full bg-[#3B82F6] text-white shadow-[0_12px_28px_rgba(59,130,246,0.28)] hover:bg-blue-600"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
+
+            <div className="border-t border-slate-100 bg-white px-7 py-4 lg:shrink-0">
               <div className="mb-3 flex flex-wrap gap-2">
                 {['请解释当前知识库的核心内容', '列出 3 条关键规定', '给我一个简短总结'].map((example) => (
                   <button

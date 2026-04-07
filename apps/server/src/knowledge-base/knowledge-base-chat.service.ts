@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { StringOutputParser } from '@langchain/core/output_parsers';
+import { RunnableLambda, RunnablePassthrough, RunnableSequence } from '@langchain/core/runnables';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiSessionMemoryService } from '../ai/ai-session-memory.service';
+import { buildResolvedChatMessages } from '../ai/prompt-template.util';
 import { KnowledgeBaseModelService } from './knowledge-base-model.service';
 import { KnowledgeBasePromptResolverService } from './knowledge-base-prompt-resolver.service';
 import { KnowledgeBaseRetrievalService } from './knowledge-base-retrieval.service';
@@ -43,7 +46,7 @@ export class KnowledgeBaseChatService {
   ) {
     const startedAt = Date.now();
     const sessionId = this.sessionMemoryService.resolveSessionId(inputSessionId);
-    const historyText = await this.sessionMemoryService.getHistoryText({
+    const conversationContext = await this.sessionMemoryService.getConversationContext({
       feature: 'knowledge_base',
       userId: user.sub,
       knowledgeBaseId,
@@ -130,18 +133,20 @@ export class KnowledgeBaseChatService {
         return;
       }
 
-      const retrievalQuestionResult = await this.resolveRetrievalQuestion({
+      const preparedAnswer = await this.createAnswerPreparationChain({
+        systemPromptOverride: knowledgeBase.systemPromptOverride ?? null,
+        answerStyle: knowledgeBase.answerStyle.toLowerCase() as 'concise' | 'balanced' | 'detailed',
+        citationMode: knowledgeBase.citationMode.toLowerCase() as 'required' | 'optional' | 'hidden',
+        strictMode: knowledgeBase.strictMode,
+      }).invoke({
+        knowledgeBaseId,
         question,
-        historyText,
+        retrievalHistoryText: conversationContext.retrievalHistoryText,
+        answerHistoryText: conversationContext.answerHistoryText,
+        conversationSummaryText: conversationContext.summaryText,
         requestId,
       });
-
-      // 先把检索阶段跑完，回答模型只消费预算后的上下文，避免 prompt 过大。
-      const retrieved = await this.retrievalService.retrieveContext(
-        knowledgeBaseId,
-        retrievalQuestionResult.retrievalQuestion,
-        requestId,
-      );
+      const { retrievalQuestionResult, retrieved, resolvedPrompt } = preparedAnswer;
 
       if (!retrieved.candidates.length) {
         await this.persistQaLog({
@@ -190,28 +195,13 @@ export class KnowledgeBaseChatService {
       const llmStartedAt = Date.now();
       const chatModelInfo = this.modelService.getChatModelInfo();
       const model = this.modelService.createChatModel();
-      // 这里先解析当前实际生效的知识库问答模板，再叠加知识库自己的补充提示词，
-      // 这样后台调整 Prompt 后，知识库问答链路会立刻跟着切换。
-      const resolvedPrompt = await this.promptResolverService.resolveKnowledgeBaseAnswerPrompt({
-        promptConfig: {
-          systemPromptOverride: knowledgeBase.systemPromptOverride,
-          answerStyle: knowledgeBase.answerStyle.toLowerCase() as 'concise' | 'balanced' | 'detailed',
-          citationMode: knowledgeBase.citationMode.toLowerCase() as 'required' | 'optional' | 'hidden',
-          strictMode: knowledgeBase.strictMode,
-        },
-        question,
-        contextText: retrieved.contextText,
-        historyText,
-      });
       this.writeEvent(res, 'loading', {
         type: 'loading',
         stage: 'generating_answer',
         message: '正在组织答案...',
       });
 
-      const stream = await model.stream(
-        [resolvedPrompt.systemPrompt, '', resolvedPrompt.userPrompt].join('\n\n'),
-      );
+      const stream = await this.createAnswerGenerationChain(model).stream(resolvedPrompt);
       const llmRequestDurationMs = Date.now() - llmStartedAt;
 
       this.logger.log(
@@ -476,11 +466,14 @@ export class KnowledgeBaseChatService {
    */
   private async resolveRetrievalQuestion(input: {
     question: string;
-    historyText?: string;
+    retrievalHistoryText?: string;
+    conversationSummaryText?: string;
     requestId?: string;
   }) {
-    const rawHistoryText = input.historyText?.trim();
-    if (!rawHistoryText) {
+    const retrievalHistoryText = input.retrievalHistoryText?.trim() ?? '';
+    const conversationSummaryText = input.conversationSummaryText?.trim() ?? '';
+
+    if (!retrievalHistoryText && !conversationSummaryText) {
       return {
         retrievalQuestion: input.question,
         rewritten: false,
@@ -492,14 +485,12 @@ export class KnowledgeBaseChatService {
     try {
       const resolvedPrompt = await this.promptResolverService.resolveKnowledgeBaseRetrievalRewritePrompt({
         question: input.question,
-        historyText: rawHistoryText,
+        retrievalHistoryText,
+        conversationSummaryText,
       });
       const model = this.modelService.createChatModel();
-      const response = await model.invoke(
-        [resolvedPrompt.systemPrompt, '', resolvedPrompt.userPrompt].join('\n\n'),
-      );
       const retrievalQuestion = this.normalizeRetrievalQuestion(
-        this.extractText(response.content),
+        await this.createRetrievalRewriteChain(model).invoke(resolvedPrompt),
         input.question,
       );
 
@@ -545,6 +536,98 @@ export class KnowledgeBaseChatService {
       .trim();
 
     return normalized || fallbackQuestion;
+  }
+
+  // 把“已解析 prompt -> LangChain 消息 -> chat model”收口成一条 Runnable，
+  // 这样知识库回答链路就不需要在主流程里手动拼装消息数组了。
+  private createAnswerGenerationChain(model: ReturnType<KnowledgeBaseModelService['createChatModel']>) {
+    return RunnableSequence.from([
+      RunnableLambda.from(this.formatResolvedPromptAsPromptValue.bind(this)),
+      model,
+    ]);
+  }
+
+  /**
+   * 主链路里最重的“问题改写 -> 检索 -> Prompt 解析”三步收口成 Runnable，
+   * 这样知识库问答在结构上更接近标准 RAG chain，而不是完全手写流程拼装。
+   */
+  private createAnswerPreparationChain(promptConfig: {
+    systemPromptOverride: string | null;
+    answerStyle: 'concise' | 'balanced' | 'detailed';
+    citationMode: 'required' | 'optional' | 'hidden';
+    strictMode: boolean;
+  }) {
+    return RunnableSequence.from([
+      RunnablePassthrough.assign({
+        retrievalQuestionResult: RunnableLambda.from(
+          async (input: {
+            question: string;
+            retrievalHistoryText?: string;
+            conversationSummaryText?: string;
+            requestId?: string;
+          }) =>
+            this.resolveRetrievalQuestion({
+              question: input.question,
+              retrievalHistoryText: input.retrievalHistoryText,
+              conversationSummaryText: input.conversationSummaryText,
+              requestId: input.requestId,
+            }),
+        ),
+      }),
+      RunnablePassthrough.assign({
+        retrieved: RunnableLambda.from(
+          async (input: {
+            knowledgeBaseId: string;
+            requestId?: string;
+            retrievalQuestionResult: {
+              retrievalQuestion: string;
+              rewritten: boolean;
+            };
+          }) =>
+            this.retrievalService.retrieveContext(
+              input.knowledgeBaseId,
+              input.retrievalQuestionResult.retrievalQuestion,
+              input.requestId,
+            ),
+        ),
+      }),
+      RunnablePassthrough.assign({
+        resolvedPrompt: RunnableLambda.from(
+          async (input: {
+            question: string;
+            answerHistoryText?: string;
+            conversationSummaryText?: string;
+            retrieved: {
+              contextText: string;
+            };
+          }) =>
+            this.promptResolverService.resolveKnowledgeBaseAnswerPrompt({
+              promptConfig,
+              question: input.question,
+              contextText: input.retrieved.contextText,
+              answerHistoryText: input.answerHistoryText,
+              conversationSummaryText: input.conversationSummaryText,
+            }),
+        ),
+      }),
+    ]);
+  }
+
+  // 检索问题改写只需要最终字符串，因此这里直接接 StringOutputParser，
+  // 保持“Prompt -> Model -> 文本”的标准 LangChain 链式结构。
+  private createRetrievalRewriteChain(model: ReturnType<KnowledgeBaseModelService['createChatModel']>) {
+    return RunnableSequence.from([
+      RunnableLambda.from(this.formatResolvedPromptAsPromptValue.bind(this)),
+      model,
+      new StringOutputParser(),
+    ]);
+  }
+
+  private async formatResolvedPromptAsPromptValue(input: {
+    systemPrompt: string;
+    userPrompt: string;
+  }) {
+    return buildResolvedChatMessages(input);
   }
 
   /**

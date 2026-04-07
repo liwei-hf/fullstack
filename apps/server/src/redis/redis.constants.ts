@@ -6,7 +6,9 @@
  */
 export const KNOWLEDGE_BASE_CACHE_TTL_SECONDS = 60;
 export const AI_SESSION_MEMORY_TTL_SECONDS = 60 * 60 * 2;
-export const AI_SESSION_MEMORY_MAX_TURNS = 3;
+export const AI_SESSION_MEMORY_MAX_TURNS = 6;
+export const AI_SESSION_MEMORY_RETRIEVAL_MAX_TURNS = 2;
+export const AI_SESSION_MEMORY_ANSWER_MAX_TURNS = 2;
 export const KNOWLEDGE_BASE_QUEUE_NAME = 'knowledge-base-ingestion';
 export const KNOWLEDGE_BASE_QUEUE_JOB_NAME = 'process-document';
 export const KNOWLEDGE_BASE_IMPORT_ZIP_QUEUE_JOB_NAME = 'import-zip';

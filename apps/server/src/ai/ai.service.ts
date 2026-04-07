@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RunnableLambda, RunnableSequence } from '@langchain/core/runnables';
+import { ChatOpenAI } from '@langchain/openai';
 import type { Response } from 'express';
 import type { AiSqlSummaryItem } from '@fullstack/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +9,7 @@ import { AiSessionMemoryService } from './ai-session-memory.service';
 import { AiSqlError } from './ai.errors';
 import { OpenAiCompatibleProvider } from './openai-compatible.provider';
 import { PromptService } from './prompt.service';
+import { buildResolvedChatMessages } from './prompt-template.util';
 import {
   buildSqlAnswerVariables,
   buildSqlGenerationVariables,
@@ -36,7 +39,7 @@ export class AiService {
   ) {
     const startedAt = Date.now();
     const sessionId = this.sessionMemoryService.resolveSessionId(inputSessionId);
-    const conversationHistoryText = await this.sessionMemoryService.getHistoryText({
+    const conversationContext = await this.sessionMemoryService.getConversationContext({
       feature: 'sql',
       userId: user.sub,
       sessionId,
@@ -81,10 +84,15 @@ export class AiService {
       const sqlGenerationStartedAt = Date.now();
       const sqlGenerationPrompt = await this.promptService.resolvePrompt(
         'sql_generation',
-        buildSqlGenerationVariables(question, {
-          sub: user.sub,
-          role: user.role,
-        }, conversationHistoryText),
+        buildSqlGenerationVariables(
+          question,
+          {
+            sub: user.sub,
+            role: user.role,
+          },
+          conversationContext.summaryText,
+          conversationContext.answerHistoryText,
+        ),
       );
       const rawSql = await this.provider.generateText({
         messages: [
@@ -190,7 +198,8 @@ export class AiService {
           question,
           role: user.role,
           rows: serializableRows,
-          conversationHistoryText,
+          conversationSummaryText: conversationContext.summaryText,
+          recentConversationText: conversationContext.answerHistoryText,
         }),
       );
 
@@ -200,55 +209,51 @@ export class AiService {
         message: '正在生成自然语言回答...',
       });
 
-      await this.provider.streamText(
-        {
-          messages: [
-            { role: 'system', content: sqlAnswerPrompt.systemPrompt },
-            { role: 'user', content: sqlAnswerPrompt.userPrompt },
-          ],
-          model: answerModel,
-          temperature: 0.3,
-        },
-        (delta) => {
-          if (thinkingStarted && !thinkingFinished) {
-            thinkingFinished = true;
-            this.writeEvent(res, 'thinking_done', {
-              type: 'thinking_done',
-            });
-          }
-
-          if (firstDeltaAt === null) {
-            firstDeltaAt = Date.now();
-            this.logger.log(
-              JSON.stringify({
-                ...traceBase,
-                stage: 'answer_first_chunk',
-                durationMs: firstDeltaAt - answerStartedAt,
-              }),
-            );
-          }
-
-          answerChunkCount += 1;
-          answerCharCount += delta.length;
-          answerText += delta;
-          this.writeEvent(res, 'answer_delta', {
-            type: 'answer_delta',
-            delta,
-          });
-        },
-        (thinkingDelta) => {
-          if (!thinkingDelta) {
-            return;
-          }
-
+      const answerStream = await this.createSqlAnswerChain(
+        this.createSqlAnswerModel(answerModel),
+      ).stream(sqlAnswerPrompt);
+      for await (const chunk of answerStream) {
+        const thinkingDelta = this.extractThinking(chunk);
+        if (thinkingDelta) {
           thinkingStarted = true;
           thinkingText += thinkingDelta;
           this.writeEvent(res, 'thinking_delta', {
             type: 'thinking_delta',
             delta: thinkingDelta,
           });
-        },
-      );
+        }
+
+        const delta = this.extractText((chunk as { content?: unknown }).content);
+        if (!delta) {
+          continue;
+        }
+
+        if (thinkingStarted && !thinkingFinished) {
+          thinkingFinished = true;
+          this.writeEvent(res, 'thinking_done', {
+            type: 'thinking_done',
+          });
+        }
+
+        if (firstDeltaAt === null) {
+          firstDeltaAt = Date.now();
+          this.logger.log(
+            JSON.stringify({
+              ...traceBase,
+              stage: 'answer_first_chunk',
+              durationMs: firstDeltaAt - answerStartedAt,
+            }),
+          );
+        }
+
+        answerChunkCount += 1;
+        answerCharCount += delta.length;
+        answerText += delta;
+        this.writeEvent(res, 'answer_delta', {
+          type: 'answer_delta',
+          delta,
+        });
+      }
 
       if (thinkingStarted && !thinkingFinished) {
         this.writeEvent(res, 'thinking_done', {
@@ -505,6 +510,140 @@ export class AiService {
     }
 
     return new AiSqlError('AI_SQL_STREAM_FAILED', '流式回答失败，请稍后重试');
+  }
+
+  private createSqlAnswerChain(model: ChatOpenAI) {
+    return RunnableSequence.from([
+      RunnableLambda.from(this.formatResolvedPromptAsPromptValue.bind(this)),
+      model,
+    ]);
+  }
+
+  private createSqlAnswerModel(modelOverride?: string) {
+    const model = modelOverride || this.configService.get<string>('OPENAI_MODEL');
+    if (!model) {
+      throw new AiSqlError('AI_SQL_STREAM_FAILED', '缺少 SQL 回答模型配置');
+    }
+
+    const zhipuChatModel = this.configService.get<string>('ZHIPU_CHAT_MODEL');
+
+    const useZhipu = Boolean(zhipuChatModel && model === zhipuChatModel);
+    const apiKey = useZhipu
+      ? this.configService.get<string>('ZHIPU_API_KEY')
+      : this.configService.get<string>('OPENAI_API_KEY');
+    const baseURL = useZhipu
+      ? this.configService.get<string>('ZHIPU_BASE_URL')
+      : this.configService.get<string>('OPENAI_BASE_URL');
+
+    if (!apiKey) {
+      throw new AiSqlError('AI_SQL_STREAM_FAILED', '缺少 SQL 回答模型凭证');
+    }
+
+    return new ChatOpenAI({
+      model,
+      apiKey,
+      configuration: this.buildConfiguration(baseURL),
+      temperature: 0.3,
+    });
+  }
+
+  private async formatResolvedPromptAsPromptValue(input: {
+    systemPrompt: string;
+    userPrompt: string;
+  }) {
+    return buildResolvedChatMessages(input);
+  }
+
+  private buildConfiguration(baseURL?: string) {
+    return baseURL ? { baseURL } : undefined;
+  }
+
+  private extractText(content: unknown) {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (Array.isArray(content)) {
+      return content
+        .map((item) => {
+          if (typeof item === 'string') {
+            return item;
+          }
+
+          if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
+            return item.text;
+          }
+
+          return '';
+        })
+        .join('');
+    }
+
+    return '';
+  }
+
+  private extractThinking(chunk: unknown) {
+    if (!chunk || typeof chunk !== 'object') {
+      return '';
+    }
+
+    const objectChunk = chunk as {
+      additional_kwargs?: Record<string, unknown>;
+      response_metadata?: Record<string, unknown>;
+    };
+
+    return (
+      this.normalizeThinkingValue(objectChunk.additional_kwargs?.reasoning_content) ||
+      this.normalizeThinkingValue(objectChunk.additional_kwargs?.reasoning) ||
+      this.normalizeThinkingValue(objectChunk.additional_kwargs?.thinking) ||
+      this.normalizeThinkingValue(objectChunk.response_metadata?.reasoning_content) ||
+      this.normalizeThinkingValue(objectChunk.response_metadata?.reasoning) ||
+      this.normalizeThinkingValue(objectChunk.response_metadata?.thinking)
+    );
+  }
+
+  private normalizeThinkingValue(value: unknown): string {
+    if (!value) {
+      return '';
+    }
+
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (typeof item === 'string') {
+            return item;
+          }
+
+          if (item && typeof item === 'object') {
+            if ('text' in item && typeof item.text === 'string') {
+              return item.text;
+            }
+
+            if ('content' in item && typeof item.content === 'string') {
+              return item.content;
+            }
+          }
+
+          return '';
+        })
+        .join('');
+    }
+
+    if (typeof value === 'object') {
+      if ('text' in value && typeof value.text === 'string') {
+        return value.text;
+      }
+
+      if ('content' in value && typeof value.content === 'string') {
+        return value.content;
+      }
+    }
+
+    return '';
   }
 
   /**

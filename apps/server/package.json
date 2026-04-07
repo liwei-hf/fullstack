@@ -22,7 +22,9 @@
     "@ai-sdk/openai": "^3.0.49",
     "@fullstack/shared": "workspace:*",
     "@langchain/community": "^1.1.27",
+    "@langchain/core": "^1.1.39",
     "@langchain/openai": "^1.4.1",
+    "@langchain/textsplitters": "^1.0.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/core": "^10.0.0",
@@ -45,6 +47,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.20.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0"
   },

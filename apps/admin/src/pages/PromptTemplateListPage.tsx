@@ -20,6 +20,7 @@ const ICON_BY_CODE: Record<PromptTemplateListItem['code'], ComponentType<{ class
   sql_generation: Database,
   sql_answer: Bot,
   knowledge_base_answer: MessageSquareText,
+  knowledge_base_retrieval_rewrite: Bot,
 };
 
 export default function PromptTemplateListPage() {

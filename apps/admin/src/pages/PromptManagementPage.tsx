@@ -21,6 +21,10 @@ import { useToast } from '@/hooks/use-toast';
 const TEMPLATE_TEST_EXAMPLES: Record<PromptTemplateCode, Record<string, unknown>> = {
   sql_generation: {
     question: '今天完成了哪些待办？',
+    conversationSummaryText:
+      '较早轮次 1：\n- 用户关注：先看看最近有哪些任务变化\n- 已回答要点：系统已经列出了最近新增和完成的任务。',
+    recentConversationText:
+      '最近对话 1：\n用户：那完成的任务呢？\n助手：已整理出最近完成的任务清单。',
     currentUserRules:
       '当前登录用户信息：\\n- 当前登录用户的真实 "User"."id" = \'cmn_demo_user\'',
     roleRules:
@@ -31,13 +35,28 @@ const TEMPLATE_TEST_EXAMPLES: Record<PromptTemplateCode, Record<string, unknown>
   sql_answer: {
     question: '今天完成了哪些待办？',
     role: 'admin',
+    conversationSummaryText:
+      '较早轮次 1：\n- 用户关注：先看看最近有哪些任务变化\n- 已回答要点：系统已经列出了最近新增和完成的任务。',
+    recentConversationText:
+      '最近对话 1：\n用户：那完成的任务呢？\n助手：已整理出最近完成的任务清单。',
     rowsJson:
       '[{"title":"研发部补充接口文档","status":"DONE","updatedAt":"2026-04-01T10:00:00.000Z"}]',
   },
   knowledge_base_answer: {
     question: '请用一句话总结员工手册的核心内容，并列出 3 个关键规定。',
+    conversationSummaryText:
+      '较早轮次 1：\n- 用户关注：想先快速了解员工手册整体要求\n- 已回答要点：员工手册以考勤、请假和行为规范为核心。',
+    answerHistoryText:
+      '最近对话 1：\n用户：先总结一下员工手册。\n助手：员工手册主要规范了考勤、请假和日常行为要求。',
     contextText:
       '片段 1：员工手册规定员工需遵守考勤制度，每日 9:00 前打卡。\\n\\n片段 2：请假需提前提交申请，病假需补充医院证明。',
+  },
+  knowledge_base_retrieval_rewrite: {
+    question: '那病假需要什么材料？',
+    conversationSummaryText:
+      '较早轮次 1：\n- 用户关注：正在围绕员工手册里的请假制度连续追问\n- 已回答要点：请假需要提前提交申请。',
+    retrievalHistoryText:
+      '最近对话 1：\n用户：员工请假流程是什么？\n助手：需要提前提交请假申请并按制度审批。',
   },
 };
 
