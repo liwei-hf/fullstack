@@ -74,12 +74,18 @@ chmod 600 ~/.ssh/authorized_keys
 5. 安装 server 运行时依赖
 6. 生成 Prisma Client
 7. `pm2 restart fullstack-server`
-8. 校验 `/`、`/m/`、`/api/auth/login`
+8. 校验 `/`、`/m/`、`/api/auth/refresh`
 
 相关脚本：
 
 - [build-demo-release.sh](/Users/liwei/self/fullstack/deploy/scripts/build-demo-release.sh)
 - [deploy-demo-release.sh](/Users/liwei/self/fullstack/deploy/scripts/deploy-demo-release.sh)
+
+本地如果你也想复用同一套免密发布方式，可以直接指定部署私钥：
+
+```bash
+SSH_KEY_PATH=~/.ssh/fullstack_demo_deploy SERVER_HOST=47.83.123.25 SERVER_USER=root pnpm deploy:release
+```
 
 ## 5. 适合你当前项目的原因
 

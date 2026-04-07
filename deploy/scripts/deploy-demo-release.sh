@@ -32,7 +32,16 @@ RELEASE_NAME="${RELEASE_NAME:-fullstack-demo-release}"
 REMOTE_TAR="${REMOTE_TAR:-/tmp/${RELEASE_NAME}.tar.gz}"
 OUTPUT_TAR="${OUTPUT_TAR:-/tmp/${RELEASE_NAME}.tar.gz}"
 SSH_PASSWORD="${SSH_PASSWORD:-}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-}"
 REMOTE_SCRIPT_PATH="/tmp/fullstack-deploy-release-remote.sh"
+
+SSH_BASE_ARGS=()
+SCP_BASE_ARGS=()
+
+if [[ -n "${SSH_KEY_PATH}" ]]; then
+  SSH_BASE_ARGS+=(-i "${SSH_KEY_PATH}")
+  SCP_BASE_ARGS+=(-i "${SSH_KEY_PATH}")
+fi
 
 quote_args() {
   local quoted=""
@@ -61,7 +70,7 @@ expect {
 }
 EOF
   else
-    scp "$@"
+    scp "${SCP_BASE_ARGS[@]}" "$@"
   fi
 }
 
@@ -82,13 +91,18 @@ expect {
 }
 EOF
   else
-    ssh "$@"
+    ssh "${SSH_BASE_ARGS[@]}" "$@"
   fi
 }
 
 if [[ -z "${SERVER_HOST}" ]]; then
   echo -e "${RED}错误：未提供 SERVER_HOST${NC}"
   echo -e "${YELLOW}示例：SERVER_HOST=47.83.123.25 SERVER_USER=root pnpm deploy:release${NC}"
+  exit 1
+fi
+
+if [[ -n "${SSH_KEY_PATH}" && ! -f "${SSH_KEY_PATH}" ]]; then
+  echo -e "${RED}错误：SSH_KEY_PATH 指向的私钥文件不存在：${SSH_KEY_PATH}${NC}"
   exit 1
 fi
 
@@ -167,9 +181,9 @@ echo ""
 curl -I --max-time 15 "http://${SERVER_HOST}/m/"
 echo ""
 curl -sS --max-time 15 -o /tmp/fullstack-release-api.out -w '%{http_code}' \
-  "http://${SERVER_HOST}/api/auth/login" \
+  "http://${SERVER_HOST}/api/auth/refresh" \
   -H 'content-type: application/json' \
-  --data '{"account":"admin","password":"Admin123456!","clientType":"admin"}'
+  --data '{"refreshToken":"release-check"}'
 echo ""
 head -c 200 /tmp/fullstack-release-api.out
 echo ""
