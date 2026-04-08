@@ -14,13 +14,22 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "首页"
+        "navigationBarTitleText": "首页",
+        "navigationStyle": "custom"
       }
     },
     {
       "path": "pages/sql/index",
       "style": {
-        "navigationBarTitleText": "自然语言查数"
+        "navigationBarTitleText": "自然语言查数",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/knowledge-base/index",
+      "style": {
+        "navigationBarTitleText": "知识库问答",
+        "navigationStyle": "custom"
       }
     }
   ],

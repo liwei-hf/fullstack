@@ -26,11 +26,7 @@ const persistAuthSnapshot = (payload: {
   token: string
   refreshToken: string
 }) => {
-  if (typeof localStorage === 'undefined') {
-    return
-  }
-
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload))
+  uni.setStorageSync(AUTH_STORAGE_KEY, payload)
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -60,10 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     token.value = ''
     refreshToken.value = ''
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(AUTH_STORAGE_KEY)
-    }
+    uni.removeStorageSync(AUTH_STORAGE_KEY)
   }
 
   /**
@@ -78,9 +71,5 @@ export const useAuthStore = defineStore('auth', () => {
     setAuth,
     logout,
     isAuthenticated
-  }
-}, {
-  persist: {
-    key: AUTH_STORAGE_KEY,
   }
 })

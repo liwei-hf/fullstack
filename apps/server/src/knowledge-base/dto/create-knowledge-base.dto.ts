@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
 
 // 创建知识库的入参约束，控制名称和描述的长度，避免异常超长文本进入数据库。
 export class CreateKnowledgeBaseDto {
@@ -10,4 +10,11 @@ export class CreateKnowledgeBaseDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  suggestedQuestions?: string[];
 }

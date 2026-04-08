@@ -31,6 +31,44 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Start seeding...');
 
+  const knowledgeBaseSeeds = [
+    {
+      name: '交通法规知识库',
+      description:
+        '包含道路交通相关法律法规、处罚标准与扣分规则，涵盖违停、闯红灯、超速等交通违法行为的处理方式、处罚金额，适用于交通规则查询与法规解释。',
+      suggestedQuestions: [
+        '闯红灯会怎么处罚？罚款多少，扣多少分？',
+        '违停一般怎么处理？哪些情况会被拖车？',
+        '超速 20%、50% 以上分别怎么处罚？',
+        '驾驶证记分规则里，哪些违法行为扣分最多？',
+        '如果发生轻微交通事故，法律上应该怎么处理？',
+      ],
+    },
+    {
+      name: '企业制度知识库',
+      description:
+        '包含企业内部管理制度与员工手册内容，如考勤规则、请假流程、报销规范、出差制度与绩效相关规定，适用于员工日常制度查询与流程说明。',
+      suggestedQuestions: [
+        '这份员工手册里对请假流程是怎么规定的？',
+        '病假、事假、年假分别需要提交哪些材料？',
+        '报销流程怎么走？有哪些费用不能报销？',
+        '考勤迟到、早退、旷工分别怎么认定和处理？',
+        '出差申请和差旅报销有哪些标准或限制？',
+      ],
+    },
+    {
+      name: '技术文档知识库',
+      description: 'vue、react文档',
+      suggestedQuestions: [
+        '这个 API 是做什么的？适合在什么场景下使用？',
+        '这个参数分别表示什么？哪些是必填，哪些是可选？',
+        '给我一个最简单的调用示例',
+        '这个 API 返回什么结果？常见返回结构怎么理解？',
+        '使用这个 API 时有哪些注意事项或常见错误？',
+      ],
+    },
+  ] as const;
+
   // ==================== 1. 创建部门 ====================
   const departments = await Promise.all([
     prisma.department.upsert({
@@ -105,6 +143,34 @@ async function main() {
     role: testUser.role,
     department: engineeringDept?.name,
   });
+
+  // 创建或更新演示用知识库基础数据。
+  // 这样新环境首次初始化和线上重复执行 seed 时，都能把推荐问题同步到同名知识库上。
+  const seededKnowledgeBases = await Promise.all(
+    knowledgeBaseSeeds.map((item) =>
+      prisma.knowledgeBase.upsert({
+        where: { name: item.name },
+        update: {
+          description: item.description,
+          suggestedQuestions: item.suggestedQuestions.slice(),
+        },
+        create: {
+          name: item.name,
+          description: item.description,
+          suggestedQuestions: item.suggestedQuestions.slice(),
+          createdById: admin.id,
+        },
+      }),
+    ),
+  );
+
+  console.log(
+    'Seeded knowledge bases:',
+    seededKnowledgeBases.map((item) => ({
+      name: item.name,
+      suggestedQuestionCount: item.suggestedQuestions.length,
+    })),
+  );
 
   console.log('Seeding finished.');
 }

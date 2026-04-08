@@ -1,20 +1,11 @@
-/**
- * 请求封装
- */
 import type { AuthResponse } from '@fullstack/shared'
-import { AUTH_STORAGE_KEY } from '@/store/auth-store'
 import { pinia } from '@/store'
-import type { UserInfo } from '@/store/auth-store'
-import { useAuthStore } from '@/store/auth-store'
+import { AUTH_STORAGE_KEY, type UserInfo, useAuthStore } from '@/store/auth-store'
+import { MOBILE_PAGES, reLaunchTo } from '@/utils/navigation'
 
-const BASE_URL = '/api'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 let refreshPromise: Promise<string> | null = null
 
-/**
- * 生成链路 requestId
- *
- * 前端把 requestId 透传给后端后，日志和 SSE meta 可以共享同一个标识。
- */
 function createRequestId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -23,23 +14,38 @@ function createRequestId() {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
 }
 
+function getPersistedAuth() {
+  const raw = uni.getStorageSync(AUTH_STORAGE_KEY) as string | {
+    token?: string
+    refreshToken?: string
+    state?: {
+      token?: string
+      refreshToken?: string
+    }
+  }
+
+  if (!raw) {
+    return { token: '', refreshToken: '' }
+  }
+
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return {
+      token: parsed.token || parsed.state?.token || '',
+      refreshToken: parsed.refreshToken || parsed.state?.refreshToken || '',
+    }
+  } catch {
+    return { token: '', refreshToken: '' }
+  }
+}
+
 function getAccessToken() {
   const authStore = useAuthStore(pinia)
   if (authStore.token) {
     return authStore.token
   }
 
-  const authStorage = localStorage.getItem(AUTH_STORAGE_KEY)
-  if (!authStorage) {
-    return ''
-  }
-
-  try {
-    const parsed = JSON.parse(authStorage)
-    return parsed.token || parsed.state?.token || ''
-  } catch {
-    return ''
-  }
+  return getPersistedAuth().token
 }
 
 function getRefreshToken() {
@@ -48,23 +54,39 @@ function getRefreshToken() {
     return authStore.refreshToken
   }
 
-  const authStorage = localStorage.getItem(AUTH_STORAGE_KEY)
-  if (!authStorage) {
-    return ''
+  return getPersistedAuth().refreshToken
+}
+
+function resolveUrl(url: string) {
+  if (/^https?:\/\//.test(url)) {
+    return url
   }
 
-  try {
-    const parsed = JSON.parse(authStorage)
-    return parsed.refreshToken || parsed.state?.refreshToken || ''
-  } catch {
-    return ''
-  }
+  return `${BASE_URL}${url}`
 }
 
 function handleUnauthorized() {
   const authStore = useAuthStore(pinia)
   authStore.logout()
-  window.location.hash = '#/login'
+  reLaunchTo(MOBILE_PAGES.login)
+}
+
+async function uniRequest(options: {
+  url: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  data?: unknown
+  header?: Record<string, string>
+}) {
+  return new Promise<UniApp.RequestSuccessCallbackResult>((resolve, reject) => {
+    uni.request({
+      url: resolveUrl(options.url),
+      method: (options.method || 'GET') as unknown as UniApp.RequestOptions['method'],
+      data: options.data as any,
+      header: options.header,
+      success: resolve,
+      fail: reject,
+    })
+  })
 }
 
 async function refreshAccessToken() {
@@ -78,30 +100,37 @@ async function refreshAccessToken() {
       throw new Error('登录已过期，请重新登录')
     }
 
-    const response = await fetch(`${BASE_URL}/auth/refresh`, {
+    const response = await uniRequest({
+      url: '/auth/refresh',
       method: 'POST',
-      headers: {
+      data: { refreshToken },
+      header: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ refreshToken }),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: '登录已过期，请重新登录' }))
+    if (response.statusCode !== 201 && response.statusCode !== 200) {
+      const error = response.data as { message?: string }
       throw new Error(error.message || '登录已过期，请重新登录')
     }
 
-    const result = await response.json()
-    const data = result.data as {
-      user: UserInfo
-      tokens: {
-        accessToken: string
-        refreshToken: string
+    const result = response.data as {
+      data: {
+        user: UserInfo
+        tokens: {
+          accessToken: string
+          refreshToken: string
+        }
       }
     }
 
-    useAuthStore(pinia).setAuth(data.user, data.tokens.accessToken, data.tokens.refreshToken)
-    return data.tokens.accessToken
+    useAuthStore(pinia).setAuth(
+      result.data.user,
+      result.data.tokens.accessToken,
+      result.data.tokens.refreshToken,
+    )
+
+    return result.data.tokens.accessToken
   })()
 
   try {
@@ -111,73 +140,61 @@ async function refreshAccessToken() {
   }
 }
 
-async function authorizedFetch(
-  url: string,
-  options: RequestInit,
-  allowRetry = true,
-) {
+async function authorizedRequest<T>(options: {
+  url: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  data?: unknown
+  header?: Record<string, string>
+}, allowRetry = true): Promise<T> {
+  const requestId = options.header?.['X-Request-Id'] || createRequestId()
   const accessToken = getAccessToken()
-  const requestId =
-    ((options.headers as Record<string, string> | undefined)?.['X-Request-Id']) || createRequestId()
-  const response = await fetch(`${BASE_URL}${url}`, {
+  const response = await uniRequest({
     ...options,
-    headers: {
-      ...(options.headers || {}),
+    header: {
+      'Content-Type': 'application/json',
+      ...options.header,
       'X-Request-Id': requestId,
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
   })
 
-  if (response.status !== 401 || !allowRetry || url === '/auth/refresh') {
-    return response
+  if (response.statusCode === 401 && allowRetry && options.url !== '/auth/refresh') {
+    try {
+      const refreshedAccessToken = await refreshAccessToken()
+      return authorizedRequest<T>({
+        ...options,
+        header: {
+          ...options.header,
+          'X-Request-Id': requestId,
+          Authorization: `Bearer ${refreshedAccessToken}`,
+        },
+      }, false)
+    } catch (error) {
+      handleUnauthorized()
+      throw error
+    }
   }
 
-  try {
-    const refreshedAccessToken = await refreshAccessToken()
-    return fetch(`${BASE_URL}${url}`, {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-        'X-Request-Id': requestId,
-        Authorization: `Bearer ${refreshedAccessToken}`,
-      },
-    })
-  } catch (error) {
-    handleUnauthorized()
-    throw error
-  }
-}
-
-export const request = async <T>(options: {
-  url: string
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  data?: unknown
-  header?: Record<string, string>
-}): Promise<T> => {
-  const { url, method = 'GET', data, header = {} } = options
-
-  const response = await authorizedFetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...header,
-    },
-    body: method !== 'GET' ? JSON.stringify(data) : undefined,
-  })
-
-  if (response.status === 401) {
+  if (response.statusCode === 401) {
     handleUnauthorized()
     throw new Error('登录已过期，请重新登录')
   }
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: '请求失败' }))
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const error = response.data as { message?: string }
     throw new Error(error.message || '网络请求失败')
   }
 
-  const result = await response.json()
-  return result.data as T
+  const payload = response.data as { data: T }
+  return payload.data
 }
+
+export const request = <T>(options: {
+  url: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  data?: unknown
+  header?: Record<string, string>
+}) => authorizedRequest<T>(options)
 
 export const streamSse = async <T extends { type: string }>(
   url: string,
@@ -185,10 +202,18 @@ export const streamSse = async <T extends { type: string }>(
   onEvent: (event: T) => void,
   signal?: AbortSignal,
 ) => {
-  const response = await authorizedFetch(url, {
+  if (typeof fetch !== 'function') {
+    throw new Error('当前平台暂不支持流式会话')
+  }
+
+  const requestId = createRequestId()
+  const accessToken = getAccessToken()
+  const response = await fetch(resolveUrl(url), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'X-Request-Id': requestId,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify(data),
     signal,
@@ -232,17 +257,11 @@ export const streamSse = async <T extends { type: string }>(
 }
 
 export const api = {
-  post: <T>(url: string, data?: any) => request<T>({ url, method: 'POST', data }),
+  post: <T>(url: string, data?: unknown) => request<T>({ url, method: 'POST', data }),
   get: <T>(url: string) => request<T>({ url, method: 'GET' }),
-  put: <T>(url: string, data?: any) => request<T>({ url, method: 'PUT', data }),
+  put: <T>(url: string, data?: unknown) => request<T>({ url, method: 'PUT', data }),
   delete: <T>(url: string) => request<T>({ url, method: 'DELETE' }),
-  patch: <T>(url: string, data?: any) => request<T>({ url, method: 'PATCH', data }),
-  /**
-   * 移动端登录
-   *
-   * H5/移动端统一由请求层补上 mobile 客户端类型，
-   * 页面只负责提交账号密码，避免把端类型判断散落到业务组件里。
-   */
+  patch: <T>(url: string, data?: unknown) => request<T>({ url, method: 'PATCH', data }),
   loginMobile: (account: string, password: string, deviceId?: string) =>
     request<AuthResponse>({
       url: '/auth/login',

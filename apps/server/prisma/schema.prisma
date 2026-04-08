@@ -203,6 +203,7 @@ model KnowledgeBase {
   id            String     @id @default(cuid())
   name          String     @unique
   description   String?
+  suggestedQuestions String[] @default([])
   createdById   String
   promptVersionId String?
   systemPromptOverride String?

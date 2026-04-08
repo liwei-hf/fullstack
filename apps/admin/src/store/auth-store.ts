@@ -15,6 +15,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { CurrentUser } from '@fullstack/shared';
 
+export const AUTH_STORAGE_KEY = 'auth-storage';
+
 /**
  * 认证状态接口
  */
@@ -43,10 +45,16 @@ export const useAuthStore = create<AuthState>()(
       // 设置认证信息（登录后调用）
       setAuth: (user, token, refreshToken) => set({ user, token, refreshToken }),
       // 登出（清除所有认证信息）
-      logout: () => set({ user: null, token: null, refreshToken: null }),
+      logout: () => {
+        set({ user: null, token: null, refreshToken: null });
+
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(AUTH_STORAGE_KEY);
+        }
+      },
     }),
     {
-      name: 'auth-storage',  // localStorage 中的 key 名
+      name: AUTH_STORAGE_KEY,  // localStorage 中的 key 名
     },
   ),
 );

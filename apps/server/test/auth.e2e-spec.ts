@@ -47,14 +47,13 @@ describe('AuthController (e2e)', () => {
     it('应该成功登录并返回 token', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/auth/login')
-        .send({
+      .send({
           account: 'admin',
           password: 'Admin123456!',
           clientType: 'admin',
         })
         .expect(201);
 
-      console.log('Login response:', JSON.stringify(response.body, null, 2));
       expect(response.body.data).toBeDefined();
       expect(response.body.data.user).toBeDefined();
       expect(response.body.data.tokens).toBeDefined();

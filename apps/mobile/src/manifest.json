@@ -1,7 +1,7 @@
 {
-  "name": "uni-preset-vue",
-  "displayName": "uni-preset-vue",
-  "description": "项目生成时的默认应用名称",
+  "name": "fullstack-mobile",
+  "displayName": "fullstack-mobile",
+  "description": "基于 uni-app 的移动端助手",
   "version": "1.0.0",
   "transformPx": false,
   "app-plus": {
@@ -44,7 +44,7 @@
   "vueVersion": "3",
   "h5": {
     "devServer": {
-      "port": 3335
+      "port": 3336
     }
   }
 }

@@ -1,15 +1,5 @@
-<template>
-  <router-view />
-</template>
+<script setup lang="ts">
+// 根组件只负责挂载全局样式，页面入口都交给 uni-app 的 pages.json 管理。
+</script>
 
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-}
-</style>
+<style src="./styles/app.css"></style>

@@ -111,6 +111,7 @@ export interface KnowledgeBaseItem {
   id: string;
   name: string;
   description: string | null;
+  suggestedQuestions: string[];
   documentCount: number;
   readyDocumentCount: number;
   createdAt: string;
@@ -157,6 +158,7 @@ export interface KnowledgeBaseDocumentItem {
 export interface CreateKnowledgeBaseRequest {
   name: string;
   description?: string;
+  suggestedQuestions?: string[];
 }
 
 /**
@@ -166,6 +168,7 @@ export interface UpdateKnowledgeBaseRequest {
   name?: string;
   description?: string;
   systemPromptOverride?: string;
+  suggestedQuestions?: string[];
 }
 
 /**

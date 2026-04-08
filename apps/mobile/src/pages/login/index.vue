@@ -1,37 +1,41 @@
 <template>
-  <div class="login-page">
-    <div class="login-shell">
-      <div class="brand-row">
-        <div class="brand-mark">AI</div>
-        <div>
-          <p class="brand-label">移动端助手</p>
-          <h1 class="brand-title">欢迎回来</h1>
-        </div>
-      </div>
+  <view class="login-page">
+    <view class="login-shell">
+      <view class="brand-row">
+        <view class="brand-mark">AI</view>
+        <view>
+          <text class="brand-label">移动端助手</text>
+          <text class="brand-title">欢迎回来</text>
+        </view>
+      </view>
 
-      <p class="brand-subtitle">输入账号密码，继续使用智能问数和文档问答。</p>
+      <text class="brand-subtitle">输入账号密码，继续使用智能问数和文档问答。</text>
 
-      <div class="form-card">
-        <label class="field-item">
-          <span class="field-label">账号</span>
+      <view class="form-card">
+        <view class="field-item">
+          <text class="field-label">账号</text>
           <input
             v-model="account"
             class="field-input"
             placeholder="用户名或手机号"
+            placeholder-class="field-placeholder"
+            confirm-type="next"
           />
-        </label>
+        </view>
 
-        <label class="field-item">
-          <span class="field-label">密码</span>
-          <div class="password-field">
+        <view class="field-item">
+          <text class="field-label">密码</text>
+          <view class="password-field">
             <input
               v-model="password"
               class="field-input field-input-with-action"
-              :type="showPassword ? 'text' : 'password'"
+              :password="!showPassword"
               placeholder="请输入密码"
+              placeholder-class="field-placeholder"
+              confirm-type="done"
+              @confirm="handleLogin"
             />
             <button
-              type="button"
               class="password-toggle"
               :aria-label="showPassword ? '隐藏密码' : '显示密码'"
               @click="showPassword = !showPassword"
@@ -89,8 +93,8 @@
                 />
               </svg>
             </button>
-          </div>
-        </label>
+          </view>
+        </view>
 
         <button
           class="login-btn"
@@ -98,33 +102,35 @@
           :disabled="loading"
           @click="handleLogin"
         >
-          <span v-if="loading" class="spinner" />
-          {{ loading ? '登录中...' : '登录' }}
+          <view v-if="loading" class="spinner" />
+          <text>{{ loading ? '登录中...' : '登录' }}</text>
         </button>
-      </div>
-
-    </div>
-  </div>
+      </view>
+    </view>
+  </view>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/store/auth-store'
+import { ensureAuthenticated } from '@/utils/auth'
+import { MOBILE_PAGES, reLaunchTo } from '@/utils/navigation'
 import { api } from '@/utils/request'
 import { showToast } from '@/utils/toast'
 
-const router = useRouter()
 const authStore = useAuthStore()
-
 const account = ref('admin')
 const password = ref('')
 const loading = ref(false)
 const showPassword = ref(false)
 
-/**
- * 登录页改成更轻的 ChatGPT 风格后，仍然保持最短登录主链路，避免为了样式把动作路径做复杂。
- */
+onShow(() => {
+  if (ensureAuthenticated()) {
+    reLaunchTo(MOBILE_PAGES.home)
+  }
+})
+
 const handleLogin = async () => {
   if (!account.value || !password.value) {
     showToast('请输入账号和密码')
@@ -135,11 +141,10 @@ const handleLogin = async () => {
 
   try {
     const response = await api.loginMobile(account.value, password.value)
-
     authStore.setAuth(response.user, response.tokens.accessToken, response.tokens.refreshToken)
-    router.push('/index')
-  } catch (error: any) {
-    showToast(error.message || '登录失败，请检查账号密码')
+    reLaunchTo(MOBILE_PAGES.home)
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '登录失败，请检查账号密码')
   } finally {
     loading.value = false
   }
@@ -147,6 +152,15 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
+button {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+button::after {
+  border: none;
+}
+
 .login-page {
   box-sizing: border-box;
   min-height: 100vh;
@@ -163,7 +177,8 @@ const handleLogin = async () => {
 }
 
 .login-shell {
-  width: min(100%, 360px);
+  width: 100%;
+  max-width: 360px;
   padding: 12px;
   border-radius: 30px;
   background: rgba(255, 255, 255, 0.48);
@@ -193,14 +208,20 @@ const handleLogin = async () => {
   box-shadow: 0 12px 24px rgba(79, 121, 238, 0.24);
 }
 
+.brand-label,
+.brand-title,
+.brand-subtitle,
+.field-label {
+  display: block;
+}
+
 .brand-label {
-  margin: 0 0 4px;
+  margin-bottom: 4px;
   font-size: 12px;
   color: #8ea2cf;
 }
 
 .brand-title {
-  margin: 0;
   font-size: 28px;
   font-weight: 700;
   color: #20304f;
@@ -228,7 +249,6 @@ const handleLogin = async () => {
 }
 
 .field-label {
-  display: block;
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 600;
@@ -247,7 +267,7 @@ const handleLogin = async () => {
   outline: none;
 }
 
-.field-input::placeholder {
+.field-placeholder {
   color: #9ca3af;
 }
 
@@ -260,6 +280,7 @@ const handleLogin = async () => {
 }
 
 .password-toggle {
+  appearance: none;
   position: absolute;
   top: 50%;
   right: 14px;
@@ -272,6 +293,8 @@ const handleLogin = async () => {
   border: none;
   background: transparent;
   padding: 0;
+  margin: 0;
+  line-height: 1;
   color: #5f90f8;
 }
 
@@ -281,6 +304,10 @@ const handleLogin = async () => {
 }
 
 .login-btn {
+  appearance: none;
+  margin-left: 0;
+  margin-right: 0;
+  line-height: 1;
   width: 100%;
   height: 46px;
   margin-top: 18px;
@@ -299,6 +326,15 @@ const handleLogin = async () => {
 
 .login-btn-loading {
   opacity: 0.86;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 @media (max-width: 390px), (max-height: 780px) {
@@ -360,16 +396,9 @@ const handleLogin = async () => {
   }
 }
 
-.spinner {
-  width: 15px;
-  height: 15px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

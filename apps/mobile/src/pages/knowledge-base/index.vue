@@ -1,231 +1,207 @@
 <template>
-  <div class="page">
-    <div class="topbar">
-      <button class="topbar-icon-btn" @click="openDrawer" aria-label="打开会话列表">
-        <span class="menu-icon" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
+  <view class="page">
+    <view class="topbar">
+      <button class="topbar-icon-btn" @click="drawerOpen = true">
+        <view class="menu-icon" aria-hidden="true">
+          <view />
+          <view />
+          <view />
+        </view>
       </button>
-      <button class="back-btn" aria-label="返回首页" @click="router.push('/index')">
-        <svg viewBox="0 0 24 24" aria-hidden="true" class="home-icon">
-          <path
-            d="M4.5 10.5 12 4.8l7.5 5.7"
-            fill="none"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2.2"
-          />
-          <path
-            d="M6.7 9.9V18a1.8 1.8 0 0 0 1.8 1.8h7a1.8 1.8 0 0 0 1.8-1.8V9.9"
-            fill="none"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2.2"
-          />
-        </svg>
+      <button class="back-btn" @click="backHome">
+        <view class="home-icon" />
       </button>
-      <span class="topbar-title">文档问答</span>
-      <button class="switch-kb-btn" @click="openKnowledgeBasePicker">
+      <text class="topbar-title">文档问答</text>
+      <button class="switch-kb-btn" @click="knowledgeBasePickerOpen = true">
         {{ selectedKnowledgeBase?.name || '选择知识库' }}
       </button>
-    </div>
+    </view>
 
-    <div v-if="drawerOpen" class="drawer-mask" @click="closeDrawer">
-      <div class="drawer-panel" @click.stop>
-        <div class="drawer-head">
-          <span class="section-title">历史会话</span>
+    <view v-if="drawerOpen" class="drawer-mask" @click="drawerOpen = false">
+      <view class="drawer-panel" @click.stop>
+        <view class="drawer-head">
+          <text class="section-title">历史会话</text>
           <button class="mini-btn" @click="handleCreateSession">新建会话</button>
-        </div>
-        <label class="drawer-search">
-          <span class="drawer-search-icon">⌕</span>
+        </view>
+        <view class="drawer-search">
+          <text class="drawer-search-icon">⌕</text>
           <input
             v-model="sessionKeyword"
             class="drawer-search-input"
             placeholder="搜索对话..."
           />
-        </label>
-        <div class="drawer-sections">
-          <section
+        </view>
+        <scroll-view class="drawer-sections" scroll-y>
+          <view
             v-for="group in groupedSessions"
             :key="group.label"
             class="drawer-section"
           >
-            <p class="drawer-section-title">{{ group.label }}</p>
-            <div class="drawer-list">
-              <div
+            <text class="drawer-section-title">{{ group.label }}</text>
+            <view class="drawer-list">
+              <view
                 v-for="item in group.items"
                 :key="item.id"
                 :class="['drawer-item', item.id === currentSession?.id ? 'drawer-item-active' : '']"
               >
                 <button class="drawer-item-main" @click="handleSelectSession(item.id)">
-                  <p class="drawer-item-title">{{ item.title }}</p>
-                  <p class="drawer-item-text">{{ item.lastMessagePreview || '新会话，等待第一轮提问' }}</p>
+                  <text class="drawer-item-title">{{ item.title }}</text>
+                  <text class="drawer-item-text">{{ item.lastMessagePreview || '新会话，等待第一轮提问' }}</text>
                 </button>
-                <button
-                  class="drawer-delete-btn"
-                  :aria-label="`删除会话 ${item.title}`"
-                  @click.stop="handleDeleteSession(item.id)"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          </section>
-          <p v-if="groupedSessions.length === 0" class="drawer-empty">没有匹配的历史会话</p>
-        </div>
-        <button class="drawer-footer-btn" @click="router.push('/index')">返回首页</button>
-      </div>
-    </div>
+                <button class="drawer-delete-btn" @click.stop="handleDeleteSession(item.id)">×</button>
+              </view>
+            </view>
+          </view>
+          <text v-if="groupedSessions.length === 0" class="drawer-empty">没有匹配的历史会话</text>
+        </scroll-view>
+        <button class="drawer-footer-btn" @click="backHome">返回首页</button>
+      </view>
+    </view>
 
-    <div v-if="knowledgeBasePickerOpen" class="drawer-mask" @click="closeKnowledgeBasePicker">
-      <div class="picker-panel" @click.stop>
-        <div class="drawer-head">
-          <span class="section-title">选择知识库</span>
-          <button class="mini-btn" @click="closeKnowledgeBasePicker">关闭</button>
-        </div>
-        <label class="drawer-search picker-search">
-          <span class="drawer-search-icon">⌕</span>
+    <view v-if="knowledgeBasePickerOpen" class="drawer-mask picker-mask" @click="knowledgeBasePickerOpen = false">
+      <view class="picker-panel" @click.stop>
+        <view class="drawer-head">
+          <text class="section-title">选择知识库</text>
+          <button class="mini-btn" @click="knowledgeBasePickerOpen = false">关闭</button>
+        </view>
+        <view class="drawer-search picker-search">
+          <text class="drawer-search-icon">⌕</text>
           <input
             v-model="knowledgeBaseKeyword"
             class="drawer-search-input"
             placeholder="搜索知识库..."
           />
-        </label>
-        <p class="helper-text picker-helper">先选定本轮对话使用的知识库，进入会话后不再展示下拉选择。</p>
-        <div class="drawer-list">
+        </view>
+        <text class="helper-text picker-helper">先选定本轮对话使用的知识库，进入会话后不再展示下拉选择。</text>
+        <view class="drawer-list">
           <button
             v-for="item in filteredKnowledgeBases"
             :key="item.id"
             :class="['drawer-item', item.id === selectedId ? 'drawer-item-active' : '']"
             @click="selectKnowledgeBaseAndClose(item.id)"
           >
-            <div class="drawer-item-row">
-              <p class="drawer-item-title">{{ item.name }}</p>
-              <span class="drawer-item-badge">{{ item.readyDocumentCount }}/{{ item.documentCount }}</span>
-            </div>
-            <p class="drawer-item-text">{{ item.description || '暂无描述' }}</p>
+            <view class="drawer-item-row">
+              <text class="drawer-item-title">{{ item.name }}</text>
+              <text class="drawer-item-badge">{{ item.readyDocumentCount }}/{{ item.documentCount }}</text>
+            </view>
+            <text class="drawer-item-text">{{ item.description || '暂无描述' }}</text>
           </button>
-        </div>
-        <p v-if="filteredKnowledgeBases.length === 0" class="drawer-empty">没有匹配的知识库</p>
-      </div>
-    </div>
+        </view>
+        <text v-if="filteredKnowledgeBases.length === 0" class="drawer-empty">没有匹配的知识库</text>
+      </view>
+    </view>
 
-    <div class="card knowledge-summary-card">
-      <div class="knowledge-base-head">
-        <div>
-          <p class="knowledge-summary-title">{{ selectedKnowledgeBase?.name || '请先选择知识库' }}</p>
-          <p class="helper-text knowledge-summary-text">
+    <view class="card knowledge-summary-card">
+      <view class="knowledge-base-head">
+        <view>
+          <text class="knowledge-summary-title">{{ selectedKnowledgeBase?.name || '请先选择知识库' }}</text>
+          <text class="helper-text knowledge-summary-text">
             {{ selectedKnowledgeBase?.description || '这里只展示已经上传过文档的知识库。' }}
-          </p>
-        </div>
-      </div>
-    </div>
+          </text>
+        </view>
+      </view>
+    </view>
 
-    <div class="card content-card">
-      <div v-if="currentSession?.messages.length" class="message-list">
-        <div
-          v-for="message in currentSession.messages"
-          :key="message.id"
-          :class="['message-row', message.role === 'user' ? 'message-row-user' : 'message-row-assistant']"
-        >
-          <div :class="['message-bubble', message.role === 'user' ? 'message-bubble-user' : 'message-bubble-assistant']">
-            <div
-              v-if="message.content"
-              class="message-content markdown-body"
-              v-html="renderMarkdown(message.content)"
-            />
-            <div
-              v-else-if="message.role === 'assistant' && message.status === 'streaming'"
-              class="loading-inline"
-            >
-              <span class="loading-dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-              <span>{{ message.loadingMessage || '正在组织答案...' }}</span>
-            </div>
-
-            <p v-if="message.errorMessage" class="message-error">
-              {{ message.errorMessage }}
-            </p>
-
-            <div v-if="message.sources?.length" class="meta-box">
-              <button class="meta-toggle" @click="toggleSources(message.id)">
-                <span>{{ message.sourcesExpanded ? '▾' : '▸' }}</span>
-                <span>引用来源</span>
-              </button>
-              <transition name="collapse">
-                <div v-if="message.sourcesExpanded" class="source-list">
-                  <div v-for="item in message.sources" :key="item.chunkId" class="source-item">
-                    <p class="source-title">{{ item.documentName }}</p>
-                    <p class="source-text">{{ item.snippet }}</p>
-                  </div>
-                </div>
-              </transition>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div v-else class="empty-box">
-        <p class="empty-title">开始第一轮知识库问答</p>
-        <p class="empty-text">选择知识库后，你可以围绕同一份文档持续追问，引用来源会跟随每次回答展示。</p>
-        <div class="empty-examples">
-          <button
-            v-for="example in examples"
-            :key="example"
-            class="example-chip"
-            @click="question = example"
+    <scroll-view
+      class="message-scroll"
+      scroll-y
+      :scroll-top="messageScrollTop"
+      @scroll="handleMessageScroll"
+    >
+      <view class="card content-card">
+        <view v-if="currentSession?.messages.length" class="message-list">
+          <view
+            v-for="message in currentSession.messages"
+            :key="message.id"
+            :class="['message-row', message.role === 'user' ? 'message-row-user' : 'message-row-assistant']"
           >
-            {{ example }}
-          </button>
-        </div>
-      </div>
-    </div>
+            <view :class="['message-bubble', message.role === 'user' ? 'message-bubble-user' : 'message-bubble-assistant']">
+              <rich-text
+                v-if="message.content"
+                class="message-content markdown-body"
+                :nodes="renderMarkdown(message.content)"
+              />
+              <view
+                v-else-if="message.role === 'assistant' && message.status === 'streaming'"
+                class="loading-inline"
+              >
+                <view class="loading-dots" aria-hidden="true">
+                  <view />
+                  <view />
+                  <view />
+                </view>
+                <text>{{ message.loadingMessage || '正在组织答案...' }}</text>
+              </view>
+
+              <text v-if="message.errorMessage" class="message-error">{{ message.errorMessage }}</text>
+
+              <view v-if="message.sources?.length" class="meta-box">
+                <button class="meta-toggle" @click="toggleSources(message.id)">
+                  <text>{{ message.sourcesExpanded ? '▾' : '▸' }}</text>
+                  <text>引用来源</text>
+                </button>
+                <transition name="collapse">
+                  <view v-if="message.sourcesExpanded" class="source-list">
+                    <view v-for="item in message.sources" :key="item.chunkId" class="source-item">
+                      <text class="source-title">{{ item.documentName }}</text>
+                      <text class="source-text">{{ item.snippet }}</text>
+                    </view>
+                  </view>
+                </transition>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view v-else class="empty-box">
+          <text class="empty-title">开始第一轮知识库问答</text>
+          <text class="empty-text">选择知识库后，你可以围绕同一份文档持续追问，引用来源会跟随每次回答展示。</text>
+          <view class="empty-examples">
+            <button
+              v-for="example in exampleQuestions"
+              :key="example"
+              class="example-chip"
+              @click="question = example"
+            >
+              {{ example }}
+            </button>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
 
     <button
       v-if="showScrollToBottom"
       class="scroll-bottom-btn"
       @click="scrollToBottom"
-      aria-label="回到底部"
     >
       ↓
     </button>
 
-    <div class="input-card">
-      <div class="input-row">
+    <view class="input-card">
+      <view class="input-row">
         <textarea
-          ref="textareaRef"
           v-model="question"
           class="question-input"
+          auto-height
+          maxlength="-1"
           :placeholder="selectedKnowledgeBase ? `向“${selectedKnowledgeBase.name}”提问` : '请先选择知识库'"
-          rows="1"
-          @input="handleInput"
-          @keydown.enter.exact.prevent="handleAsk"
+          confirm-type="send"
+          @confirm="handleAsk"
         />
-        <button
-          class="submit-btn"
-          :aria-label="asking ? '停止生成' : '发送消息'"
-          @click="handleAsk"
-        >
+        <button class="submit-btn" @click="handleAsk">
           {{ asking ? '■' : '↑' }}
         </button>
-      </div>
-    </div>
-  </div>
+      </view>
+    </view>
+  </view>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, ref, watch } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import type { AiConversationMessage, AiConversationSession, KnowledgeBaseItem, RagSseEvent } from '@fullstack/shared'
-import { api, streamSse } from '@/utils/request'
-import { renderMarkdown } from '@/utils/markdown'
-import { showToast } from '@/utils/toast'
+import { ensureAuthenticated } from '@/utils/auth'
+import { groupConversationSessions, isAbortError, shouldShowScrollToBottom } from '@/utils/chat'
 import {
   createConversationMessage,
   createConversationSession,
@@ -235,10 +211,17 @@ import {
   saveConversationSessions,
   updateConversationSessionInList,
 } from '@/utils/ai-conversation'
+import { MOBILE_PAGES, reLaunchTo } from '@/utils/navigation'
+import { renderMarkdown } from '@/utils/markdown'
+import { showToast } from '@/utils/toast'
+import { api, streamSse } from '@/utils/request'
 
-const router = useRouter()
-const route = useRoute()
-const abortController = ref<AbortController | null>(null)
+const defaultExamples = [
+  '这份制度里对请假流程怎么规定？',
+  '病假需要补充哪些材料？',
+  '如果员工迟到，会有什么处理方式？',
+]
+
 const knowledgeBases = ref<KnowledgeBaseItem[]>([])
 const sessions = ref<AiConversationSession[]>([])
 const activeSessionId = ref('')
@@ -250,16 +233,15 @@ const knowledgeBasePickerOpen = ref(false)
 const showScrollToBottom = ref(false)
 const sessionKeyword = ref('')
 const knowledgeBaseKeyword = ref('')
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const examples = [
-  '这份制度里对请假流程怎么规定？',
-  '病假需要补充哪些材料？',
-  '如果员工迟到，会有什么处理方式？',
-]
+const messageScrollTop = ref(0)
+const pendingSessionId = ref('')
+const pendingKnowledgeBaseId = ref('')
+const abortController = ref<AbortController | null>(null)
 
 const currentSession = computed(
   () => sessions.value.find((item) => item.id === activeSessionId.value) || sessions.value[0] || null,
 )
+
 const visibleSessions = computed(() => {
   if (!selectedId.value) {
     return sessions.value.filter((session) => !session.knowledgeBaseId)
@@ -267,9 +249,19 @@ const visibleSessions = computed(() => {
 
   return sessions.value.filter((session) => session.knowledgeBaseId === selectedId.value)
 })
+
 const selectedKnowledgeBase = computed(
   () => knowledgeBases.value.find((item) => item.id === selectedId.value) || null,
 )
+
+const exampleQuestions = computed(() => {
+  if (selectedKnowledgeBase.value?.suggestedQuestions?.length) {
+    return selectedKnowledgeBase.value.suggestedQuestions
+  }
+
+  return defaultExamples
+})
+
 const filteredKnowledgeBases = computed(() => {
   const keyword = knowledgeBaseKeyword.value.trim().toLowerCase()
   if (!keyword) {
@@ -282,47 +274,15 @@ const filteredKnowledgeBases = computed(() => {
 })
 
 const groupedSessions = computed(() => {
-  const keyword = sessionKeyword.value.trim().toLowerCase()
-  const matchedSessions = visibleSessions.value.filter((session) => {
-    if (!keyword) {
-      return true
-    }
-
-    const latestMessage = session.messages[session.messages.length - 1]
-    return [session.title, session.lastMessagePreview, latestMessage?.content]
-      .filter(Boolean)
-      .some((value) => value!.toLowerCase().includes(keyword))
-  })
-
-  const groups = new Map<string, AiConversationSession[]>()
-  matchedSessions.forEach((session) => {
-    const label = resolveSessionGroupLabel(session.updatedAt || session.createdAt)
-    const currentGroup = groups.get(label) || []
-    currentGroup.push(session)
-    groups.set(label, currentGroup)
-  })
-
-  return Array.from(groups.entries()).map(([label, items]) => ({ label, items }))
+  return groupConversationSessions(
+    visibleSessions.value,
+    sessionKeyword.value,
+    (session) => {
+      const latestMessage = session.messages[session.messages.length - 1]
+      return [session.title, session.lastMessagePreview, latestMessage?.content]
+    },
+  )
 })
-
-function resolveSessionGroupLabel(isoTime: string) {
-  const target = new Date(isoTime)
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  const targetDay = new Date(target.getFullYear(), target.getMonth(), target.getDate())
-
-  if (targetDay.getTime() === today.getTime()) {
-    return '今日'
-  }
-
-  if (targetDay.getTime() === yesterday.getTime()) {
-    return '昨天'
-  }
-
-  return '更早'
-}
 
 function initializeSessions() {
   const loaded = loadConversationSessions('knowledge_base')
@@ -366,18 +326,13 @@ async function fetchKnowledgeBases() {
     const filtered = data.filter((item) => item.documentCount > 0)
     knowledgeBases.value = filtered
 
-    const queryKnowledgeBaseId =
-      typeof route.query.knowledgeBaseId === 'string' ? route.query.knowledgeBaseId : ''
-    const preferredId = queryKnowledgeBaseId || currentSession.value?.knowledgeBaseId
+    const preferredId = pendingKnowledgeBaseId.value || currentSession.value?.knowledgeBaseId
     if (preferredId && filtered.some((item) => item.id === preferredId)) {
       selectedId.value = preferredId
       return
     }
 
     selectedId.value = filtered[0]?.id || ''
-    if (!preferredId && filtered.length > 0) {
-      knowledgeBasePickerOpen.value = true
-    }
   } catch (error) {
     showToast(error instanceof Error ? error.message : '获取知识库失败')
   }
@@ -395,14 +350,6 @@ function handleCreateSession() {
   persistSessions()
 }
 
-function openDrawer() {
-  drawerOpen.value = true
-}
-
-function closeDrawer() {
-  drawerOpen.value = false
-}
-
 function handleSelectSession(sessionId: string) {
   sessions.value = updateConversationSessionInList(sessions.value, sessionId, (session) => session)
   activeSessionId.value = sessionId
@@ -411,7 +358,7 @@ function handleSelectSession(sessionId: string) {
     selectedId.value = matchedSession.knowledgeBaseId
   }
   persistSessions()
-  closeDrawer()
+  drawerOpen.value = false
 }
 
 function handleDeleteSession(sessionId: string) {
@@ -433,23 +380,8 @@ function handleDeleteSession(sessionId: string) {
     const nextActiveSession = nextSessions[0]!
     activeSessionId.value = nextActiveSession.id
     selectedId.value = nextActiveSession.knowledgeBaseId || ''
-    if (!selectedId.value && knowledgeBases.value.length > 0) {
-      knowledgeBasePickerOpen.value = true
-    }
   }
   persistSessions()
-}
-
-function handleStop() {
-  abortController.value?.abort()
-}
-
-function openKnowledgeBasePicker() {
-  knowledgeBasePickerOpen.value = true
-}
-
-function closeKnowledgeBasePicker() {
-  knowledgeBasePickerOpen.value = false
 }
 
 function handleKnowledgeBaseChange() {
@@ -476,24 +408,17 @@ function handleKnowledgeBaseChange() {
 function selectKnowledgeBaseAndClose(knowledgeBaseId: string) {
   selectedId.value = knowledgeBaseId
   handleKnowledgeBaseChange()
-  closeKnowledgeBasePicker()
+  knowledgeBasePickerOpen.value = false
 }
 
-function resizeTextarea() {
-  if (!textareaRef.value) {
-    return
-  }
-
-  textareaRef.value.style.height = 'auto'
-  const nextHeight = Math.min(textareaRef.value.scrollHeight, 132)
-  textareaRef.value.style.height = `${Math.max(nextHeight, 46)}px`
+function backHome() {
+  reLaunchTo(MOBILE_PAGES.home)
 }
 
-function handleInput() {
-  resizeTextarea()
+function handleStop() {
+  abortController.value?.abort()
 }
 
-// 知识库问答也走聊天流，但每个会话额外绑定一个 knowledgeBaseId，方便恢复时自动选中。
 async function handleAsk() {
   if (asking.value) {
     handleStop()
@@ -505,7 +430,7 @@ async function handleAsk() {
   }
 
   if (!selectedId.value) {
-    openKnowledgeBasePicker()
+    knowledgeBasePickerOpen.value = true
     showToast('请先选择知识库')
     return
   }
@@ -538,7 +463,6 @@ async function handleAsk() {
   }))
 
   question.value = ''
-  resizeTextarea()
   asking.value = true
   abortController.value = new AbortController()
 
@@ -577,14 +501,10 @@ async function handleAsk() {
           return
         }
 
-        if (event.type === 'thinking_done') {
-          return
-        }
-
         if (event.type === 'answer_delta') {
           updateMessage(targetSessionId, assistantMessage.id, (message) => ({
             ...message,
-            content: `${message.content}${event.delta}`,
+            content: `${message.content || ''}${event.delta}`,
             thinkingExpanded: message.thinking ? false : message.thinkingExpanded,
           }))
           return
@@ -613,17 +533,17 @@ async function handleAsk() {
       },
       abortController.value.signal,
     )
-  } catch (error: any) {
-    const aborted = error instanceof DOMException && error.name === 'AbortError'
+  } catch (error) {
+    const aborted = isAbortError(error)
     updateMessage(targetSessionId, assistantMessage.id, (message) => ({
       ...message,
       status: aborted ? 'done' : 'error',
       loadingMessage: '',
-      errorMessage: aborted ? '已停止生成' : error?.message || '知识库问答失败',
+      errorMessage: aborted ? '已停止生成' : error instanceof Error ? error.message : '知识库问答失败',
     }))
 
     if (!aborted) {
-      showToast(error?.message || '知识库问答失败')
+      showToast(error instanceof Error ? error.message : '知识库问答失败')
     }
   } finally {
     abortController.value = null
@@ -643,34 +563,29 @@ function toggleSources(messageId: string) {
 }
 
 function scrollToBottom() {
-  if (typeof window === 'undefined') {
+  messageScrollTop.value += 100000
+  showScrollToBottom.value = false
+}
+
+function handleMessageScroll(event: any) {
+  showScrollToBottom.value = shouldShowScrollToBottom(event.detail)
+}
+
+onLoad((options) => {
+  pendingSessionId.value = options?.sessionId || ''
+  pendingKnowledgeBaseId.value = options?.knowledgeBaseId || ''
+})
+
+onShow(() => {
+  if (!ensureAuthenticated()) {
     return
   }
 
-  window.requestAnimationFrame(() => {
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
-}
+  initializeSessions()
+  void fetchKnowledgeBases()
 
-function updateScrollToBottomVisibility() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  const viewportBottom = window.scrollY + window.innerHeight
-  const pageBottom = document.documentElement.scrollHeight
-  showScrollToBottom.value = pageBottom - viewportBottom > 140
-}
-
-initializeSessions()
-void fetchKnowledgeBases()
-
-onMounted(() => {
-  if (typeof route.query.sessionId === 'string') {
-    const matchedSession = sessions.value.find((session) => session.id === route.query.sessionId)
+  if (pendingSessionId.value) {
+    const matchedSession = sessions.value.find((session) => session.id === pendingSessionId.value)
     if (matchedSession) {
       activeSessionId.value = matchedSession.id
       if (matchedSession.knowledgeBaseId) {
@@ -678,40 +593,7 @@ onMounted(() => {
       }
     }
   }
-
-  resizeTextarea()
-  updateScrollToBottomVisibility()
-  window.addEventListener('scroll', updateScrollToBottomVisibility, { passive: true })
-  window.addEventListener('resize', updateScrollToBottomVisibility)
 })
-
-onBeforeUnmount(() => {
-  window.removeEventListener('scroll', updateScrollToBottomVisibility)
-  window.removeEventListener('resize', updateScrollToBottomVisibility)
-})
-
-watch(
-  question,
-  async () => {
-    await nextTick()
-    resizeTextarea()
-  },
-)
-
-watch(
-  () => currentSession.value?.knowledgeBaseId,
-  (nextKnowledgeBaseId) => {
-    if (nextKnowledgeBaseId && nextKnowledgeBaseId !== selectedId.value) {
-      selectedId.value = nextKnowledgeBaseId
-      return
-    }
-
-    if (!nextKnowledgeBaseId && knowledgeBases.value.length > 0) {
-      knowledgeBasePickerOpen.value = true
-    }
-  },
-  { immediate: true },
-)
 
 watch(
   () => selectedId.value,
@@ -740,28 +622,41 @@ watch(
 )
 
 watch(
-  sessions,
-  () => {
-    persistSessions()
-  },
-  { deep: true },
-)
-
-watch(
   () => currentSession.value?.messages,
   async () => {
     await nextTick()
     scrollToBottom()
-    updateScrollToBottomVisibility()
   },
   { deep: true },
 )
 </script>
 
 <style scoped>
+button {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+input,
+textarea {
+  box-sizing: border-box;
+}
+
+button::after {
+  border: none;
+}
+
 .page {
+  box-sizing: border-box;
   min-height: 100vh;
-  padding: 108px 16px 132px;
+  min-height: 100svh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: calc(108px + env(safe-area-inset-top, 0px)) 16px calc(132px + env(safe-area-inset-bottom, 0px));
   background:
     radial-gradient(circle at top left, rgba(111, 162, 255, 0.18), transparent 26%),
     linear-gradient(180deg, #eef4ff 0%, #f6f8ff 100%);
@@ -770,14 +665,20 @@ watch(
 .topbar {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(100%, 420px);
+  box-sizing: border-box;
+  min-height: calc(60px + env(safe-area-inset-top, 0px));
   z-index: 25;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 8px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
   background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.72);
+  box-shadow: 0 8px 24px rgba(104, 124, 168, 0.06);
   backdrop-filter: blur(12px);
 }
 
@@ -785,12 +686,19 @@ watch(
 .back-btn,
 .switch-kb-btn,
 .mini-btn,
+.drawer-item-main,
+.drawer-delete-btn,
+.drawer-footer-btn,
+.example-chip,
 .submit-btn,
-.think-toggle,
-.meta-toggle {
+.meta-toggle,
+.scroll-bottom-btn {
   appearance: none;
   border: none;
   background: none;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
 }
 
 .topbar-icon-btn {
@@ -815,16 +723,25 @@ watch(
   font-size: 20px;
   line-height: 1;
   background: transparent;
-  color: #0F172A;
+  color: #0f172a;
 }
 
 .home-icon {
   width: 24px;
   height: 24px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 24px 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M4.5 10.5 12 4.8l7.5 5.7' stroke='%230F172A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6.7 9.9V18a1.8 1.8 0 0 0 1.8 1.8h7a1.8 1.8 0 0 0 1.8-1.8V9.9' stroke='%230F172A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .switch-kb-btn {
   margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 44vw;
   height: 32px;
   padding: 0 12px;
   border-radius: 999px;
@@ -834,9 +751,12 @@ watch(
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbar-title {
+  flex-shrink: 0;
   font-size: 16px;
   font-weight: 700;
   color: #0f172a;
@@ -848,21 +768,21 @@ watch(
   gap: 4px;
 }
 
-.menu-icon span {
+.menu-icon view {
   height: 2px;
   border-radius: 999px;
-  background: #0F172A;
+  background: #0f172a;
 }
 
-.menu-icon span:nth-child(1) {
+.menu-icon view:nth-child(1) {
   width: 18px;
 }
 
-.menu-icon span:nth-child(2) {
+.menu-icon view:nth-child(2) {
   width: 12px;
 }
 
-.menu-icon span:nth-child(3) {
+.menu-icon view:nth-child(3) {
   width: 15px;
 }
 
@@ -873,8 +793,16 @@ watch(
   background: rgba(15, 23, 42, 0.36);
 }
 
+.picker-mask {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(76px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
 .drawer-panel {
-  width: min(320px, 82vw);
+  width: 82vw;
+  max-width: 320px;
   height: 100%;
   background: #ffffff;
   box-shadow: 18px 0 40px rgba(15, 23, 42, 0.12);
@@ -884,48 +812,78 @@ watch(
 }
 
 .picker-panel {
-  width: min(360px, calc(100vw - 32px));
-  max-height: min(70vh, 620px);
-  margin: 60px auto 0;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 360px;
+  max-height: min(72vh, 640px);
+  margin: 0;
   overflow-y: auto;
-  border-radius: 24px;
+  border-radius: 32px;
   background: #ffffff;
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.14);
-  padding: 20px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 26px 56px rgba(15, 23, 42, 0.16);
+  padding: 24px 16px 18px;
 }
 
 .drawer-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.picker-panel .drawer-head {
+  align-items: center;
+  margin-bottom: 18px;
 }
 
 .drawer-search {
   position: relative;
   display: flex;
   align-items: center;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 1px solid rgba(226, 232, 240, 0.88);
+  border-radius: 22px;
+  background: rgba(248, 250, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.picker-panel .drawer-search {
   margin-bottom: 16px;
 }
 
 .drawer-search-icon {
   position: absolute;
-  left: 14px;
-  color: #94A3B8;
-  font-size: 14px;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 15px;
 }
 
 .drawer-search-input {
+  flex: 1;
   width: 100%;
-  height: 42px;
-  border: 1px solid rgba(219, 227, 240, 0.92);
-  border-radius: 14px;
-  background: #f8faff;
-  padding: 0 14px 0 36px;
-  font-size: 13px;
+  height: 54px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 0 34px;
+  font-size: 14px;
+  line-height: 54px;
   color: #334155;
   outline: none;
+  appearance: none;
+  box-shadow: none;
+}
+
+.picker-panel .drawer-search-input {
+  height: 54px;
+  line-height: 54px;
 }
 
 .drawer-sections {
@@ -934,7 +892,6 @@ watch(
   min-height: 0;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
 }
 
 .drawer-section {
@@ -943,12 +900,25 @@ watch(
   gap: 8px;
 }
 
+.drawer-section-title,
+.drawer-item-title,
+.drawer-item-text,
+.drawer-empty,
+.knowledge-summary-title,
+.helper-text,
+.empty-title,
+.empty-text,
+.message-error,
+.source-title,
+.source-text {
+  display: block;
+}
+
 .drawer-section-title {
-  margin: 0;
   padding-left: 2px;
   font-size: 12px;
   font-weight: 700;
-  color: #64748B;
+  color: #64748b;
 }
 
 .drawer-list {
@@ -976,6 +946,28 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.picker-panel .drawer-list {
+  gap: 12px;
+}
+
+.picker-panel .drawer-item {
+  padding: 14px 14px 14px 16px;
+  min-height: 74px;
+}
+
+.picker-panel .drawer-item-row {
+  align-items: center;
+}
+
+.picker-panel .drawer-item-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-panel .drawer-item-badge {
+  flex-shrink: 0;
 }
 
 .drawer-item-active {
@@ -1007,7 +999,7 @@ watch(
 .drawer-item-title {
   font-size: 14px;
   font-weight: 700;
-  color: #0F172A;
+  color: #0f172a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1017,7 +1009,7 @@ watch(
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.6;
-  color: #64748B;
+  color: #64748b;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1029,17 +1021,16 @@ watch(
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: #0F766E;
+  color: #0f766e;
 }
 
 .drawer-delete-btn {
   width: 24px;
   min-width: 24px;
   height: 24px;
-  border: none;
   border-radius: 999px;
   background: transparent;
-  color: #94A3B8;
+  color: #94a3b8;
   font-size: 18px;
   line-height: 1;
   display: inline-flex;
@@ -1048,10 +1039,10 @@ watch(
 }
 
 .drawer-empty {
-  margin: 18px 0 0;
+  margin-top: 18px;
   text-align: center;
   font-size: 13px;
-  color: #94A3B8;
+  color: #94a3b8;
 }
 
 .drawer-footer-btn {
@@ -1061,13 +1052,17 @@ watch(
   border: 1px solid rgba(226, 232, 240, 0.88);
   border-radius: 14px;
   background: rgba(248, 250, 255, 0.88);
-  color: #64748B;
+  color: #64748b;
   font-size: 13px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .card {
   background: transparent;
+  border: none;
   border-radius: 0;
   padding: 0;
   box-shadow: none;
@@ -1082,8 +1077,10 @@ watch(
   margin-bottom: 18px;
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.46);
   box-shadow: 0 18px 38px rgba(104, 124, 168, 0.1);
-  padding: 16px 14px 14px;
+  backdrop-filter: blur(10px);
+  padding: 18px 14px 14px;
 }
 
 .knowledge-base-head {
@@ -1096,21 +1093,19 @@ watch(
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(226, 232, 240, 0.88);
   box-shadow: 0 12px 26px rgba(104, 124, 168, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.knowledge-base-head > view {
+  flex: 1;
+  min-width: 0;
 }
 
 .knowledge-summary-title {
-  margin: 0;
   font-size: 15px;
   font-weight: 700;
   color: #0f172a;
-}
-
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  line-height: 1.5;
 }
 
 .section-title {
@@ -1124,33 +1119,35 @@ watch(
   border-radius: 999px;
   background: #fff;
   color: #0f172a;
-  padding: 6px 12px;
+  min-height: 34px;
+  padding: 0 12px;
   font-size: 12px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.select,
+.picker-panel .mini-btn {
+  min-width: 72px;
+  height: 38px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .question-input {
+  flex: 1;
   width: 100%;
-  border: 1px solid #dbe3f0;
-  border-radius: 14px;
-  padding: 12px 14px;
-  font-size: 14px;
-  color: #111827;
-  background: #fff;
-}
-
-.question-input {
   border: none;
   background: transparent;
   min-height: 46px;
   max-height: 132px;
-  resize: none;
-  padding-top: 11px;
-  padding-bottom: 11px;
-  overflow-y: auto;
-  padding-left: 8px;
-  padding-right: 0;
+  padding: 11px 0 11px 8px;
+  font-size: 14px;
+  color: #111827;
 }
 
 .helper-text,
@@ -1161,20 +1158,18 @@ watch(
 }
 
 .empty-box {
-  margin-top: 0;
   padding: 28px 12px 16px;
   text-align: center;
 }
 
 .empty-title {
-  margin: 0;
   font-size: 16px;
   font-weight: 700;
   color: #0f172a;
 }
 
 .empty-text {
-  margin: 8px 0 0;
+  margin-top: 8px;
   font-size: 13px;
   line-height: 1.7;
   color: #64748b;
@@ -1193,14 +1188,18 @@ watch(
   border-radius: 999px;
   background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
   box-shadow: 0 8px 18px rgba(59, 130, 246, 0.08);
-  padding: 9px 14px;
+  min-height: 38px;
+  padding: 0 14px;
   font-size: 12px;
   color: #35517d;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .picker-helper {
-  margin-top: 0;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  line-height: 1.7;
 }
 
 .picker-search {
@@ -1209,6 +1208,12 @@ watch(
 
 .knowledge-summary-text {
   margin-top: 4px;
+}
+
+.message-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
 .message-list {
@@ -1238,7 +1243,7 @@ watch(
 .message-bubble-user {
   border: 1px solid #dbeafe;
   background: linear-gradient(180deg, #eff4ff 0%, #e8f0ff 100%);
-  color: #0F172A;
+  color: #0f172a;
 }
 
 .message-bubble-assistant {
@@ -1260,57 +1265,22 @@ watch(
   color: #dc2626;
 }
 
-.think-box,
 .meta-box {
   margin-bottom: 12px;
   border-radius: 16px;
   padding: 12px 14px;
-}
-
-.think-box {
-  border: 1px solid #fcd34d;
-  background: #fef3c7;
-}
-
-.meta-box {
   border: 1px solid #e2e8f0;
   background: rgba(248, 250, 255, 0.9);
 }
 
-.think-toggle,
 .meta-toggle {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   width: 100%;
   font-size: 12px;
-}
-
-.think-toggle {
-  color: #92400e;
-}
-
-.meta-toggle {
   color: #64748b;
   gap: 8px;
-  justify-content: flex-start;
-}
-
-.think-box-interactive {
-  cursor: pointer;
-}
-
-.think-arrow {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.think-content {
-  margin-top: 8px;
-  font-size: 13px;
-  line-height: 1.75;
-  color: #78350f;
-  opacity: 0.82;
 }
 
 .source-list {
@@ -1342,8 +1312,12 @@ watch(
 
 .input-card {
   position: fixed;
-  left: 16px;
-  right: 16px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 388px;
+  box-sizing: border-box;
   bottom: 0;
   z-index: 20;
   border-radius: 28px;
@@ -1356,12 +1330,13 @@ watch(
 
 .input-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
 }
 
 .submit-btn {
   min-width: 42px;
+  flex-shrink: 0;
   width: 42px;
   height: 42px;
   border-radius: 999px;
@@ -1370,15 +1345,14 @@ watch(
   justify-content: center;
   font-size: 18px;
   font-weight: 700;
-}
-
-.question-input {
-  flex: 1;
+  background: linear-gradient(180deg, #5f90f8 0%, #4b77ed 100%);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(79, 121, 238, 0.22);
 }
 
 .scroll-bottom-btn {
   position: fixed;
-  right: 16px;
+  right: max(calc(50% - 194px), 16px);
   bottom: calc(92px + env(safe-area-inset-bottom, 0px));
   z-index: 30;
   border: 1px solid rgba(226, 232, 240, 0.92);
@@ -1393,12 +1367,7 @@ watch(
   padding: 0;
   font-size: 20px;
   font-weight: 700;
-  color: #0F172A;
-}
-
-.submit-btn {
-  background: linear-gradient(180deg, #5f90f8 0%, #4b77ed 100%);
-  color: #fff;
+  color: #0f172a;
 }
 
 .loading-inline {
@@ -1416,7 +1385,7 @@ watch(
   gap: 6px;
 }
 
-.loading-dots span {
+.loading-dots view {
   width: 8px;
   height: 8px;
   border-radius: 999px;
@@ -1425,11 +1394,11 @@ watch(
   animation: aiDots 1.1s infinite ease-in-out;
 }
 
-.loading-dots span:nth-child(2) {
+.loading-dots view:nth-child(2) {
   animation-delay: 0.15s;
 }
 
-.loading-dots span:nth-child(3) {
+.loading-dots view:nth-child(3) {
   animation-delay: 0.3s;
 }
 

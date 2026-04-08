@@ -15,7 +15,7 @@
  * ```
  */
 import type { CurrentUser, AuthResponse } from '@fullstack/shared';
-import { useAuthStore } from '@/store/auth-store';
+import { AUTH_STORAGE_KEY, useAuthStore } from '@/store/auth-store';
 
 const API_BASE_URL = '/api';
 let refreshPromise: Promise<string | null> | null = null;
@@ -298,7 +298,7 @@ function getToken(): string | null {
     return token;
   }
 
-  const auth = localStorage.getItem('auth-storage');
+  const auth = localStorage.getItem(AUTH_STORAGE_KEY);
   if (auth) {
     try {
       const parsed = JSON.parse(auth);
@@ -316,7 +316,7 @@ function getRefreshToken(): string | null {
     return refreshToken;
   }
 
-  const auth = localStorage.getItem('auth-storage');
+  const auth = localStorage.getItem(AUTH_STORAGE_KEY);
   if (auth) {
     try {
       const parsed = JSON.parse(auth);

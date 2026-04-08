@@ -18,6 +18,20 @@ jobs:
     name: Typecheck And Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fullstack_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d fullstack_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - name: Checkout
@@ -38,8 +52,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare Server Environment
+        run: |
+          cat <<'EOF' > apps/server/.env
+          PORT=3334
+          DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/fullstack_ci
+          JWT_ACCESS_SECRET=test-access-secret
+          JWT_ACCESS_EXPIRES_IN=8h
+          REFRESH_TOKEN_TTL_DAYS=7
+          DEFAULT_USER_PASSWORD=ChangeMe123!
+          SEED_ADMIN_USERNAME=admin
+          SEED_ADMIN_PHONE=13800000000
+          SEED_ADMIN_PASSWORD=Admin123456!
+          OPENAI_API_KEY=test-openai-key
+          OPENAI_BASE_URL=https://api.openai.com/v1
+          OPENAI_MODEL=gpt-4o-mini
+          OPENAI_SQL_MODEL=gpt-4o-mini
+          OPENAI_ANSWER_MODEL=gpt-4o-mini
+          OPENAI_CHAT_MODEL=gpt-4o-mini
+          OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+          AI_SQL_VISIBILITY=admin_only
+          EOF
+
+      - name: Prepare Database
+        run: |
+          pnpm db:generate
+          pnpm db:push
+          pnpm db:seed
+
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Unit Tests
+        run: pnpm test
+
+      - name: Server E2E Tests
+        run: pnpm test:e2e
 
       - name: Build
         run: pnpm build

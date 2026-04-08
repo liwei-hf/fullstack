@@ -29,6 +29,12 @@ import {
 import { renderMarkdown } from '@/utils/markdown';
 import { useToast } from '@/hooks/use-toast';
 
+const DEFAULT_KNOWLEDGE_BASE_EXAMPLES = [
+  '请解释当前知识库的核心内容',
+  '列出 3 条关键规定',
+  '给我一个简短总结',
+];
+
 /**
  * 知识库问答页
  *
@@ -71,6 +77,21 @@ export default function KnowledgeBaseChatPage() {
     () => knowledgeBases.find((item) => item.id === selectedId) ?? null,
     [knowledgeBases, selectedId],
   );
+  const suggestedQuestions = useMemo(() => {
+    const detailQuestions =
+      detail && selectedId === detail.id ? detail.suggestedQuestions : [];
+    const itemQuestions = selectedItem?.suggestedQuestions || [];
+
+    if (detailQuestions.length > 0) {
+      return detailQuestions;
+    }
+
+    if (itemQuestions.length > 0) {
+      return itemQuestions;
+    }
+
+    return DEFAULT_KNOWLEDGE_BASE_EXAMPLES;
+  }, [detail, selectedId, selectedItem]);
 
   useEffect(() => {
     saveConversationSessions('knowledge_base', sessions);
@@ -647,7 +668,7 @@ export default function KnowledgeBaseChatPage() {
 
             <div className="border-t border-slate-100 bg-white px-7 py-4 lg:shrink-0">
               <div className="mb-3 flex flex-wrap gap-2">
-                {['请解释当前知识库的核心内容', '列出 3 条关键规定', '给我一个简短总结'].map((example) => (
+                {suggestedQuestions.map((example) => (
                   <button
                     key={example}
                     type="button"

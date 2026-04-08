@@ -55,6 +55,13 @@ const CHUNK_STRATEGY_LABELS: Record<KnowledgeBaseChunkStrategy, string> = {
 const CHUNK_STRATEGY_OPTIONS: KnowledgeBaseChunkStrategy[] = ['fixed', 'heading'];
 const DOCUMENT_PAGE_SIZE = 10;
 
+function parseSuggestedQuestions(input: string) {
+  return input
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function buildPageItems(currentPage: number, totalPages: number) {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, index) => index + 1);
@@ -105,6 +112,7 @@ export default function KnowledgeBasePage() {
   const [createForm, setCreateForm] = useState<CreateKnowledgeBaseRequest>({
     name: '',
     description: '',
+    suggestedQuestions: [],
   });
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [selectedChunkStrategy, setSelectedChunkStrategy] =
@@ -117,6 +125,7 @@ export default function KnowledgeBasePage() {
   const [configSaving, setConfigSaving] = useState(false);
   const [configForm, setConfigForm] = useState({
     systemPromptOverride: '',
+    suggestedQuestionsText: '',
   });
   const [documentPage, setDocumentPage] = useState(1);
 
@@ -207,6 +216,7 @@ export default function KnowledgeBasePage() {
 
     setConfigForm({
       systemPromptOverride: detail.promptConfig.systemPromptOverride || '',
+      suggestedQuestionsText: detail.suggestedQuestions.join('\n'),
     });
   }, [detail]);
 
@@ -261,8 +271,9 @@ export default function KnowledgeBasePage() {
       const created = await api.post<KnowledgeBaseDetail>('/knowledge-base', {
         name: createForm.name.trim(),
         description: createForm.description?.trim() || undefined,
+        suggestedQuestions: parseSuggestedQuestions(createForm.suggestedQuestions?.join('\n') || ''),
       });
-      setCreateForm({ name: '', description: '' });
+      setCreateForm({ name: '', description: '', suggestedQuestions: [] });
       setCreateDialogOpen(false);
       toast({ title: '知识库已创建' });
       await fetchKnowledgeBases(created.id);
@@ -362,6 +373,7 @@ export default function KnowledgeBasePage() {
     try {
       const updated = await api.patch<KnowledgeBaseDetail>(`/knowledge-base/${selectedId}`, {
         systemPromptOverride: configForm.systemPromptOverride,
+        suggestedQuestions: parseSuggestedQuestions(configForm.suggestedQuestionsText),
       } satisfies UpdateKnowledgeBaseRequest);
       setDetail(updated);
       toast({ title: '知识库问答配置已保存' });
@@ -513,6 +525,25 @@ export default function KnowledgeBasePage() {
                           placeholder="请设定与当前知识库相关的补充提示词..."
                           className="min-h-[140px] rounded-xl border-slate-200 bg-white px-4 py-3 text-sm focus-visible:ring-blue-200"
                         />
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-slate-700">推荐问题</p>
+                        <Textarea
+                          value={configForm.suggestedQuestionsText}
+                          onChange={(event) =>
+                            setConfigForm((previous) => ({
+                              ...previous,
+                              suggestedQuestionsText: event.target.value,
+                            }))
+                          }
+                          disabled={!selectedId}
+                          placeholder={'每行一个推荐问题，例如：\n请总结这份知识库的核心内容\n列出 3 条关键规定'}
+                          className="min-h-[120px] rounded-xl border-slate-200 bg-white px-4 py-3 text-sm focus-visible:ring-blue-200"
+                        />
+                        <p className="text-xs leading-5 text-slate-500">
+                          管理端和手机端问答页都会优先展示这里配置的问题。建议控制在 3 到 6 条。
+                        </p>
                       </div>
 
                       <div className="flex justify-end">
@@ -704,6 +735,23 @@ export default function KnowledgeBasePage() {
                 placeholder="可选，描述知识库主要内容和用途。"
                 className="min-h-[120px] rounded-xl border-slate-200 bg-white px-4 py-3 text-sm focus-visible:ring-blue-200"
               />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700">推荐问题</p>
+              <Textarea
+                value={createForm.suggestedQuestions?.join('\n') || ''}
+                onChange={(event) =>
+                  setCreateForm((previous) => ({
+                    ...previous,
+                    suggestedQuestions: parseSuggestedQuestions(event.target.value),
+                  }))
+                }
+                placeholder={'可选，每行一个推荐问题，例如：\n这份制度里对请假流程怎么规定？\n病假需要补充哪些材料？'}
+                className="min-h-[120px] rounded-xl border-slate-200 bg-white px-4 py-3 text-sm focus-visible:ring-blue-200"
+              />
+              <p className="text-xs leading-5 text-slate-500">
+                创建后会同步用于电脑端和手机端的知识库问答推荐问题。
+              </p>
             </div>
           </div>
           <DialogFooter className="border-t border-slate-200 px-6 py-4">

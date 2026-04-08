@@ -47,7 +47,6 @@ describe('TodosController (e2e)', () => {
         clientType: 'admin',
       });
 
-    console.log('Login response:', JSON.stringify(loginResponse.body, null, 2));
     accessToken = loginResponse.body.data?.tokens?.accessToken;
     userId = loginResponse.body.data?.user?.id;
   });

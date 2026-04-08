@@ -8,7 +8,7 @@
  * - 登录失败处理
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 
@@ -45,17 +45,19 @@ describe('LoginPage', () => {
   const renderLoginPage = async () => {
     const { default: LoginPage } = await import('../../pages/LoginPage');
     return render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <LoginPage />
       </BrowserRouter>
     );
   };
 
+  const getPasswordInput = () => screen.getByLabelText('密码', { selector: 'input' });
+
   it('应该渲染登录表单', async () => {
     await renderLoginPage();
 
     expect(screen.getByLabelText(/账号/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/密码/i)).toBeInTheDocument();
+    expect(getPasswordInput()).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /登录/i })).toBeInTheDocument();
   });
 
@@ -63,14 +65,14 @@ describe('LoginPage', () => {
     await renderLoginPage();
 
     expect(screen.queryByText('Admin123456!')).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/密码/i)).toHaveValue('');
+    expect(getPasswordInput()).toHaveValue('');
   });
 
   it('应该允许输入账号和密码', async () => {
     await renderLoginPage();
 
     const accountInput = screen.getByLabelText(/账号/i);
-    const passwordInput = screen.getByLabelText(/密码/i);
+    const passwordInput = getPasswordInput();
 
     // 清空默认值后再输入
     await userEvent.clear(accountInput);
@@ -108,7 +110,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText(/密码/i), 'testpass');
+    await userEvent.type(getPasswordInput(), 'testpass');
 
     // 点击登录按钮
     const loginButton = screen.getByRole('button', { name: /登录/i });
@@ -130,7 +132,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText(/密码/i), 'wrong-password');
+    await userEvent.type(getPasswordInput(), 'wrong-password');
 
     const loginButton = screen.getByRole('button', { name: /登录/i });
     await userEvent.click(loginButton);
@@ -155,7 +157,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
 
-    await userEvent.type(screen.getByLabelText(/密码/i), 'testpass');
+    await userEvent.type(getPasswordInput(), 'testpass');
 
     const loginButton = screen.getByRole('button', { name: /登录/i });
     await userEvent.click(loginButton);

@@ -1,149 +1,150 @@
 <template>
-  <div class="home-page">
-    <div class="home-shell">
-      <div class="hero-card">
-        <div class="hero-head">
-          <div>
-            <p class="hero-label">欢迎回来</p>
-            <h1 class="hero-title">Hi，{{ authStore.user?.username || '今天想问点什么？' }}</h1>
-          </div>
-          <span class="role-pill">{{ authStore.user?.role === 'admin' ? '管理员' : '普通用户' }}</span>
-        </div>
-        <p class="hero-subtitle">从知识库问答和智能问数继续你的对话，也可以直接恢复最近会话。</p>
-      </div>
+  <view class="home-page">
+    <view class="home-shell">
+      <view class="hero-card">
+        <view class="hero-head">
+          <view>
+            <text class="hero-label">欢迎回来</text>
+            <text class="hero-title">Hi，{{ authStore.user?.username || '今天想问点什么？' }}</text>
+          </view>
+          <text class="role-pill">{{ authStore.user?.role === 'admin' ? '管理员' : '普通用户' }}</text>
+        </view>
+        <text class="hero-subtitle">从知识库问答和智能问数继续你的对话，也可以直接恢复最近会话。</text>
+      </view>
 
-      <button class="entry-card" @click="router.push('/sql')">
-        <div class="entry-main">
-          <span class="entry-icon">◎</span>
-          <div>
-            <p class="entry-title">智能问数</p>
-            <p class="entry-desc">根据业务问题自动查询数据并生成自然语言回答</p>
-          </div>
-        </div>
-        <span class="entry-arrow">›</span>
+      <button class="entry-card" @click="openSqlPage()">
+        <view class="entry-main">
+          <text class="entry-icon">◎</text>
+          <view>
+            <text class="entry-title">智能问数</text>
+            <text class="entry-desc">根据业务问题自动查询数据并生成自然语言回答</text>
+          </view>
+        </view>
+        <text class="entry-arrow">›</text>
       </button>
 
       <button class="entry-card" @click="openKnowledgeBasePicker">
-        <div class="entry-main">
-          <span class="entry-icon entry-icon-teal">◌</span>
-          <div>
-            <p class="entry-title">知识库问答</p>
-            <p class="entry-desc">围绕知识库文档连续追问，并查看引用来源</p>
-          </div>
-        </div>
-        <span class="entry-arrow">›</span>
+        <view class="entry-main">
+          <text class="entry-icon entry-icon-teal">◌</text>
+          <view>
+            <text class="entry-title">知识库问答</text>
+            <text class="entry-desc">围绕知识库文档连续追问，并查看引用来源</text>
+          </view>
+        </view>
+        <text class="entry-arrow">›</text>
       </button>
 
-      <div class="recent-card">
-        <div class="section-head">
-          <div>
-            <p class="section-label">最近会话</p>
-            <h2 class="section-title">继续上一次对话</h2>
-          </div>
-        </div>
+      <view class="recent-card">
+        <view class="section-head">
+          <view>
+            <text class="section-label">最近会话</text>
+            <text class="section-title">继续上一次对话</text>
+          </view>
+        </view>
 
-        <section class="recent-section">
-          <div class="recent-section-head">
-            <span class="recent-dot" />
-            <span>知识库问答</span>
-          </div>
-          <div v-if="recentKnowledgeBaseSessions.length" class="recent-list">
+        <view class="recent-section">
+          <view class="recent-section-head">
+            <view class="recent-dot" />
+            <text>知识库问答</text>
+          </view>
+          <view v-if="recentKnowledgeBaseSessions.length" class="recent-list">
             <button
               v-for="session in recentKnowledgeBaseSessions"
               :key="session.id"
               class="recent-item"
               @click="handleOpenKnowledgeBaseSession(session)"
             >
-              <div class="recent-item-main">
-                <p class="recent-item-title">{{ session.title }}</p>
-                <p class="recent-item-text">{{ session.lastMessagePreview || '继续当前知识库问答' }}</p>
-              </div>
-              <span class="recent-item-time">{{ formatRelativeTime(session.updatedAt || session.createdAt) }}</span>
+              <view class="recent-item-main">
+                <text class="recent-item-title">{{ session.title }}</text>
+                <text class="recent-item-text">{{ session.lastMessagePreview || '继续当前知识库问答' }}</text>
+              </view>
+              <text class="recent-item-time">{{ formatRelativeTime(session.updatedAt || session.createdAt) }}</text>
             </button>
-          </div>
-          <p v-else class="recent-empty">还没有知识库问答历史</p>
-        </section>
+          </view>
+          <text v-else class="recent-empty">还没有知识库问答历史</text>
+        </view>
 
-        <section class="recent-section">
-          <div class="recent-section-head">
-            <span class="recent-dot recent-dot-blue" />
-            <span>智能问数</span>
-          </div>
-          <div v-if="recentSqlSessions.length" class="recent-list">
+        <view class="recent-section">
+          <view class="recent-section-head">
+            <view class="recent-dot recent-dot-blue" />
+            <text>智能问数</text>
+          </view>
+          <view v-if="recentSqlSessions.length" class="recent-list">
             <button
               v-for="session in recentSqlSessions"
               :key="session.id"
               class="recent-item"
-              @click="router.push({ path: '/sql', query: { sessionId: session.id } })"
+              @click="openSqlPage(session.id)"
             >
-              <div class="recent-item-main">
-                <p class="recent-item-title">{{ session.title }}</p>
-                <p class="recent-item-text">{{ session.lastMessagePreview || '继续当前智能问数对话' }}</p>
-              </div>
-              <span class="recent-item-time">{{ formatRelativeTime(session.updatedAt || session.createdAt) }}</span>
+              <view class="recent-item-main">
+                <text class="recent-item-title">{{ session.title }}</text>
+                <text class="recent-item-text">{{ session.lastMessagePreview || '继续当前智能问数对话' }}</text>
+              </view>
+              <text class="recent-item-time">{{ formatRelativeTime(session.updatedAt || session.createdAt) }}</text>
             </button>
-          </div>
-          <p v-else class="recent-empty">还没有智能问数历史</p>
-        </section>
-      </div>
+          </view>
+          <text v-else class="recent-empty">还没有智能问数历史</text>
+        </view>
+      </view>
 
       <button class="logout-btn" @click="handleLogout">退出登录</button>
-    </div>
+    </view>
 
-    <div v-if="knowledgeBasePickerOpen" class="picker-mask" @click="closeKnowledgeBasePicker">
-      <div class="picker-panel" @click.stop>
-        <div class="picker-head">
-          <div>
-            <p class="section-label">知识库问答</p>
-            <h3 class="picker-title">先选择一个知识库</h3>
-          </div>
+    <view v-if="knowledgeBasePickerOpen" class="picker-mask" @click="closeKnowledgeBasePicker">
+      <view class="picker-panel" @click.stop>
+        <view class="picker-head">
+          <view>
+            <text class="section-label">知识库问答</text>
+            <text class="picker-title">先选择一个知识库</text>
+          </view>
           <button class="picker-close" @click="closeKnowledgeBasePicker">关闭</button>
-        </div>
+        </view>
 
-        <div class="picker-list">
+        <view class="picker-list">
           <button
             v-for="item in availableKnowledgeBases"
             :key="item.id"
             class="picker-item"
             @click="handleOpenKnowledgeBase(item.id)"
           >
-            <div class="picker-item-main">
-              <p class="picker-item-title">{{ item.name }}</p>
-              <p class="picker-item-text">{{ item.description || '围绕当前知识库内容继续追问' }}</p>
-            </div>
-            <span class="picker-item-badge">{{ item.readyDocumentCount }}/{{ item.documentCount }}</span>
+            <view class="picker-item-main">
+              <text class="picker-item-title">{{ item.name }}</text>
+              <text class="picker-item-text">{{ item.description || '围绕当前知识库内容继续追问' }}</text>
+            </view>
+            <text class="picker-item-badge">{{ item.readyDocumentCount }}/{{ item.documentCount }}</text>
           </button>
-          <p v-if="!availableKnowledgeBases.length" class="recent-empty">当前还没有可问答的知识库</p>
-        </div>
-      </div>
-    </div>
-  </div>
+          <text v-if="!availableKnowledgeBases.length" class="recent-empty">当前还没有可问答的知识库</text>
+        </view>
+      </view>
+    </view>
+  </view>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import type { AiConversationSession, KnowledgeBaseItem } from '@fullstack/shared'
 import { useAuthStore } from '@/store/auth-store'
+import { ensureAuthenticated } from '@/utils/auth'
+import { MOBILE_PAGES, navigateTo, reLaunchTo } from '@/utils/navigation'
 import { api } from '@/utils/request'
 import { loadConversationSessions } from '@/utils/ai-conversation'
 
-const router = useRouter()
 const authStore = useAuthStore()
 const knowledgeBasePickerOpen = ref(false)
 const availableKnowledgeBases = ref<KnowledgeBaseItem[]>([])
+const recentKnowledgeBaseSessions = ref<AiConversationSession[]>([])
+const recentSqlSessions = ref<AiConversationSession[]>([])
 
-const recentKnowledgeBaseSessions = computed(() =>
-  loadConversationSessions('knowledge_base')
+const refreshSessions = () => {
+  recentKnowledgeBaseSessions.value = loadConversationSessions('knowledge_base')
     .filter((session) => session.knowledgeBaseId && session.messages.length > 0)
-    .slice(0, 4),
-)
+    .slice(0, 4)
 
-const recentSqlSessions = computed(() =>
-  loadConversationSessions('sql')
+  recentSqlSessions.value = loadConversationSessions('sql')
     .filter((session) => session.messages.length > 0)
-    .slice(0, 4),
-)
+    .slice(0, 4)
+}
 
 const formatRelativeTime = (isoTime: string) => {
   const target = new Date(isoTime).getTime()
@@ -170,6 +171,10 @@ const fetchKnowledgeBases = async () => {
   }
 }
 
+const openSqlPage = (sessionId?: string) => {
+  navigateTo(MOBILE_PAGES.sql, sessionId ? { sessionId } : undefined)
+}
+
 const openKnowledgeBasePicker = async () => {
   if (!availableKnowledgeBases.value.length) {
     await fetchKnowledgeBases()
@@ -184,7 +189,7 @@ const closeKnowledgeBasePicker = () => {
 
 const handleOpenKnowledgeBase = (knowledgeBaseId: string) => {
   closeKnowledgeBasePicker()
-  router.push({ path: '/knowledge-base', query: { knowledgeBaseId } })
+  navigateTo(MOBILE_PAGES.knowledgeBase, { knowledgeBaseId })
 }
 
 const handleOpenKnowledgeBaseSession = async (session: AiConversationSession) => {
@@ -203,12 +208,9 @@ const handleOpenKnowledgeBaseSession = async (session: AiConversationSession) =>
     return
   }
 
-  router.push({
-    path: '/knowledge-base',
-    query: {
-      knowledgeBaseId: session.knowledgeBaseId,
-      sessionId: session.id,
-    },
+  navigateTo(MOBILE_PAGES.knowledgeBase, {
+    knowledgeBaseId: session.knowledgeBaseId,
+    sessionId: session.id,
   })
 }
 
@@ -219,25 +221,43 @@ const handleLogout = async () => {
     // 即使后端撤销失败，也要确保本地登录态被清除
   } finally {
     authStore.logout()
-    router.push('/login')
+    reLaunchTo(MOBILE_PAGES.login)
   }
 }
 
-onMounted(() => {
+onShow(() => {
+  if (!ensureAuthenticated()) {
+    return
+  }
+
+  refreshSessions()
   void fetchKnowledgeBases()
 })
 </script>
 
 <style scoped>
+button {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+button::after {
+  border: none;
+}
+
 .home-page {
+  box-sizing: border-box;
   min-height: 100vh;
-  padding: 24px 18px 28px;
+  min-height: 100svh;
+  min-height: 100dvh;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 18px calc(28px + env(safe-area-inset-bottom, 0px));
   background:
     radial-gradient(circle at top left, rgba(111, 162, 255, 0.22), transparent 30%),
     linear-gradient(180deg, #eef4ff 0%, #f6f8ff 100%);
 }
 
 .home-shell {
+  width: 100%;
   max-width: 380px;
   margin: 0 auto;
 }
@@ -248,8 +268,8 @@ onMounted(() => {
   background: linear-gradient(155deg, #6ea1ff 0%, #4e7bf2 100%);
   color: #fff;
   box-shadow: 0 18px 40px rgba(79, 121, 238, 0.18);
-  padding: 18px;
-  margin-bottom: 14px;
+  padding: 20px 18px 18px;
+  margin-bottom: 16px;
 }
 
 .hero-head {
@@ -259,14 +279,30 @@ onMounted(() => {
   gap: 16px;
 }
 
+.hero-label,
+.hero-title,
+.hero-subtitle,
+.entry-title,
+.entry-desc,
+.section-label,
+.section-title,
+.recent-item-title,
+.recent-item-text,
+.recent-item-time,
+.recent-empty,
+.picker-title,
+.picker-item-title,
+.picker-item-text {
+  display: block;
+}
+
 .hero-label {
-  margin: 0 0 6px;
+  margin-bottom: 6px;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.76);
 }
 
 .hero-title {
-  margin: 0;
   font-size: 28px;
   font-weight: 700;
   line-height: 1.2;
@@ -274,22 +310,28 @@ onMounted(() => {
 }
 
 .hero-subtitle {
-  margin: 12px 0 0;
+  margin-top: 12px;
   font-size: 14px;
   line-height: 1.7;
   color: rgba(255, 255, 255, 0.84);
 }
 
 .role-pill {
+  flex-shrink: 0;
+  align-self: flex-start;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
   color: #fff;
+  white-space: nowrap;
 }
 
 .entry-card {
+  appearance: none;
+  margin: 0;
+  line-height: inherit;
   width: 100%;
   border: 1px solid rgba(226, 232, 240, 0.84);
   border-radius: 20px;
@@ -311,6 +353,8 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .entry-icon {
@@ -339,7 +383,6 @@ onMounted(() => {
 }
 
 .entry-desc {
-  margin: 0;
   font-size: 13px;
   line-height: 1.6;
   color: #64748b;
@@ -352,10 +395,11 @@ onMounted(() => {
 
 .recent-card {
   margin-top: 16px;
-  border: 1px solid rgba(226, 232, 240, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 34px rgba(98, 120, 170, 0.08);
+  backdrop-filter: blur(10px);
   padding: 18px 16px 16px;
 }
 
@@ -364,13 +408,12 @@ onMounted(() => {
 }
 
 .section-label {
-  margin: 0 0 6px;
+  margin-bottom: 6px;
   font-size: 12px;
   color: #8ea2cf;
 }
 
 .section-title {
-  margin: 0;
   font-size: 20px;
   font-weight: 700;
   color: #20304f;
@@ -408,6 +451,9 @@ onMounted(() => {
 }
 
 .recent-item {
+  appearance: none;
+  margin: 0;
+  line-height: inherit;
   position: relative;
   width: 100%;
   border: 1px solid rgba(226, 232, 240, 0.84);
@@ -433,11 +479,11 @@ onMounted(() => {
 }
 
 .recent-item-main {
+  flex: 1;
   min-width: 0;
 }
 
 .recent-item-title {
-  margin: 0;
   font-size: 14px;
   font-weight: 700;
   color: #111827;
@@ -445,7 +491,7 @@ onMounted(() => {
 }
 
 .recent-item-text {
-  margin: 4px 0 0;
+  margin-top: 4px;
   font-size: 12px;
   line-height: 1.6;
   color: #64748b;
@@ -453,27 +499,35 @@ onMounted(() => {
 
 .recent-item-time {
   flex-shrink: 0;
+  margin-left: 8px;
   font-size: 11px;
   color: #94a3b8;
 }
 
 .recent-empty {
-  margin: 0;
   padding: 10px 0 4px;
   font-size: 13px;
   color: #94a3b8;
 }
 
 .logout-btn {
+  appearance: none;
+  margin-left: 0;
+  margin-right: 0;
+  line-height: 1;
   width: 100%;
   height: 44px;
   margin-top: 16px;
   border: 1px solid rgba(226, 232, 240, 0.84);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.92);
   color: #64748b;
   font-size: 14px;
   font-weight: 600;
+  box-shadow: 0 10px 22px rgba(98, 120, 170, 0.06);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .picker-mask {
@@ -485,6 +539,8 @@ onMounted(() => {
 }
 
 .picker-panel {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 380px;
   margin: 0 auto;
   border-radius: 24px;
@@ -502,18 +558,27 @@ onMounted(() => {
 }
 
 .picker-title {
-  margin: 0;
   font-size: 18px;
   font-weight: 700;
   color: #111827;
 }
 
 .picker-close {
+  appearance: none;
   border: none;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
   background: transparent;
   color: #64748b;
   font-size: 13px;
   font-weight: 600;
+  min-width: 72px;
+  height: 38px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .picker-list {
@@ -523,6 +588,9 @@ onMounted(() => {
 }
 
 .picker-item {
+  appearance: none;
+  margin: 0;
+  line-height: inherit;
   width: 100%;
   border: 1px solid rgba(226, 232, 240, 0.88);
   border-radius: 20px;
@@ -537,24 +605,25 @@ onMounted(() => {
 }
 
 .picker-item-main {
+  flex: 1;
   min-width: 0;
 }
 
 .picker-item-title {
-  margin: 0;
   font-size: 14px;
   font-weight: 700;
   color: #111827;
 }
 
 .picker-item-text {
-  margin: 5px 0 0;
+  margin-top: 5px;
   font-size: 12px;
   line-height: 1.6;
   color: #64748b;
 }
 
 .picker-item-badge {
+  flex-shrink: 0;
   border-radius: 999px;
   background: rgba(15, 118, 110, 0.1);
   padding: 4px 10px;

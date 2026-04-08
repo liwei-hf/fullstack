@@ -31,10 +31,11 @@ export class KnowledgeBaseService {
 
   // 创建知识库时先校验重名，避免后续上传文档时出现归属混乱。
   async createKnowledgeBase(
-    dto: { name: string; description?: string },
+    dto: { name: string; description?: string; suggestedQuestions?: string[] },
     user: AuthenticatedRequestUser,
   ): Promise<KnowledgeBaseDetail> {
     this.ensureAdmin(user);
+    const suggestedQuestions = this.normalizeSuggestedQuestions(dto.suggestedQuestions);
 
     const exists = await this.prisma.knowledgeBase.findUnique({
       where: { name: dto.name.trim() },
@@ -47,6 +48,7 @@ export class KnowledgeBaseService {
       data: {
         name: dto.name.trim(),
         description: dto.description?.trim() || null,
+        suggestedQuestions,
         createdById: user.sub,
       },
       include: {
@@ -63,6 +65,7 @@ export class KnowledgeBaseService {
       id: knowledgeBase.id,
       name: knowledgeBase.name,
       description: knowledgeBase.description,
+      suggestedQuestions: knowledgeBase.suggestedQuestions,
       documentCount: knowledgeBase._count.documents,
       readyDocumentCount: 0,
       createdAt: knowledgeBase.createdAt.toISOString(),
@@ -102,6 +105,7 @@ export class KnowledgeBaseService {
         id: item.id,
         name: item.name,
         description: item.description,
+        suggestedQuestions: item.suggestedQuestions,
         documentCount: item.documents.length,
         readyDocumentCount,
         createdAt: item.createdAt.toISOString(),
@@ -138,6 +142,7 @@ export class KnowledgeBaseService {
       id: knowledgeBase.id,
       name: knowledgeBase.name,
       description: knowledgeBase.description,
+      suggestedQuestions: knowledgeBase.suggestedQuestions,
       documentCount: knowledgeBase.documents.length,
       readyDocumentCount: knowledgeBase.documents.filter((document) => document.status === 'READY').length,
       createdAt: knowledgeBase.createdAt.toISOString(),
@@ -170,6 +175,7 @@ export class KnowledgeBaseService {
       name?: string;
       description?: string;
       systemPromptOverride?: string;
+      suggestedQuestions?: string[];
       answerStyle?: KnowledgeBaseAnswerStyle;
       citationMode?: KnowledgeBaseCitationMode;
       strictMode?: boolean;
@@ -187,6 +193,10 @@ export class KnowledgeBaseService {
     }
 
     const trimmedName = dto.name?.trim();
+    const suggestedQuestions =
+      dto.suggestedQuestions !== undefined
+        ? this.normalizeSuggestedQuestions(dto.suggestedQuestions)
+        : undefined;
     if (trimmedName && trimmedName !== current.name) {
       const exists = await this.prisma.knowledgeBase.findUnique({
         where: { name: trimmedName },
@@ -203,6 +213,7 @@ export class KnowledgeBaseService {
         description: dto.description !== undefined ? dto.description?.trim() || null : undefined,
         systemPromptOverride:
           dto.systemPromptOverride !== undefined ? dto.systemPromptOverride.trim() || null : undefined,
+        suggestedQuestions,
         answerStyle: dto.answerStyle ? this.toPersistenceAnswerStyle(dto.answerStyle) : undefined,
         citationMode: dto.citationMode ? this.toPersistenceCitationMode(dto.citationMode) : undefined,
         strictMode: dto.strictMode,
@@ -329,5 +340,30 @@ export class KnowledgeBaseService {
 
   private toPersistenceCitationMode(mode: KnowledgeBaseCitationMode) {
     return mode.toUpperCase() as 'REQUIRED' | 'OPTIONAL' | 'HIDDEN';
+  }
+
+  /**
+   * 推荐问题会直接展示给管理端和手机端用户，这里统一做裁剪、去重和去空。
+   */
+  private normalizeSuggestedQuestions(questions?: string[]) {
+    if (!questions) {
+      return [];
+    }
+
+    const uniqueQuestions = new Set<string>();
+    for (const question of questions) {
+      const trimmedQuestion = question.trim();
+      if (!trimmedQuestion) {
+        continue;
+      }
+
+      if (uniqueQuestions.size >= 6) {
+        break;
+      }
+
+      uniqueQuestions.add(trimmedQuestion);
+    }
+
+    return Array.from(uniqueQuestions);
   }
 }

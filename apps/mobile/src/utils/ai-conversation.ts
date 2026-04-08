@@ -15,7 +15,6 @@ function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
 }
 
-// 会话标题由首轮问题自动生成，移动端不额外引入复杂的重命名交互。
 export function deriveConversationTitle(question: string, maxLength = 18) {
   const normalized = question.trim().replace(/\s+/g, ' ')
   if (!normalized) {
@@ -59,32 +58,27 @@ export function createConversationMessage(
 }
 
 export function loadConversationSessions(kind: AiConversationKind) {
-  if (typeof window === 'undefined') {
-    return [] as AiConversationSession[]
-  }
-
   try {
-    const raw = window.localStorage.getItem(storageKey(kind))
+    const raw = uni.getStorageSync(storageKey(kind))
     if (!raw) {
-      return []
+      return [] as AiConversationSession[]
     }
 
-    const parsed = JSON.parse(raw) as AiConversationSession[]
-    return Array.isArray(parsed) ? parsed : []
+    if (typeof raw === 'string') {
+      const parsed = JSON.parse(raw) as AiConversationSession[]
+      return Array.isArray(parsed) ? parsed : []
+    }
+
+    return Array.isArray(raw) ? (raw as AiConversationSession[]) : []
   } catch {
     return []
   }
 }
 
 export function saveConversationSessions(kind: AiConversationKind, sessions: AiConversationSession[]) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(storageKey(kind), JSON.stringify(sessions.slice(0, MAX_SESSION_COUNT)))
+  uni.setStorageSync(storageKey(kind), sessions.slice(0, MAX_SESSION_COUNT))
 }
 
-// 当前会话只要有新消息或被重新选中，就把它移动到顶部，移动端和管理端保持同一套心智。
 export function moveConversationSessionToTop(sessions: AiConversationSession[], sessionId: string) {
   const target = sessions.find((session) => session.id === sessionId)
   if (!target) {
@@ -94,7 +88,6 @@ export function moveConversationSessionToTop(sessions: AiConversationSession[], 
   return [target, ...sessions.filter((session) => session.id !== sessionId)]
 }
 
-// 页面层只关心“更新哪条会话”，排序规则统一收口在这里，避免四个页面各写一套置顶逻辑。
 export function updateConversationSessionInList(
   sessions: AiConversationSession[],
   sessionId: string,
@@ -108,7 +101,6 @@ export function updateConversationSessionInList(
     : moveConversationSessionToTop(nextSessions, sessionId)
 }
 
-// 删除后是否补一个新的空会话，由页面层结合当前选中态和业务场景决定。
 export function removeConversationSession(sessions: AiConversationSession[], sessionId: string) {
   return sessions.filter((session) => session.id !== sessionId)
 }

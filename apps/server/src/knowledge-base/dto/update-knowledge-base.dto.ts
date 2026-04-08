@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsOptional,
@@ -33,6 +35,13 @@ export class UpdateKnowledgeBaseDto {
   @IsString()
   @MaxLength(4000)
   systemPromptOverride?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  suggestedQuestions?: string[];
 
   @IsOptional()
   @IsIn(KNOWLEDGE_BASE_ANSWER_STYLES)

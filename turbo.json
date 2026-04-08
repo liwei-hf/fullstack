@@ -16,6 +16,10 @@
     "typecheck": {
       "dependsOn": ["^build"],  // 类型检查前确保依赖包已构建
       "outputs": []  // 无输出文件
+    },
+    "test": {
+      "dependsOn": ["^build"],  // 测试前先确保共享包等上游依赖已可用
+      "outputs": []  // 测试任务不产出构建物
     }
   }
 }
