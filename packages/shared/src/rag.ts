@@ -33,14 +33,12 @@ export type KnowledgeBaseStatus = (typeof KNOWLEDGE_BASE_STATUSES)[number];
  * 文档切片策略
  *
  * 说明：
- * - fixed: 固定长度切片，适合通用文档和 MVP 默认策略
- * - paragraph: 段落优先切片，仅兼容历史数据，新上传文档不再推荐使用
- * - heading: 标题结构切片，适合章节层级清晰的文档
+ * - fixed: 固定尺寸窗口切片，结果稳定、便于控制 chunk 粒度
+ * - recursive: 递归切片，优先保留段落和句子边界，适合大多数自然语言文档
  */
 export const KNOWLEDGE_BASE_CHUNK_STRATEGIES = [
   'fixed',
-  'paragraph',
-  'heading',
+  'recursive',
 ] as const;
 
 export type KnowledgeBaseChunkStrategy = (typeof KNOWLEDGE_BASE_CHUNK_STRATEGIES)[number];

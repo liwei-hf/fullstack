@@ -3,15 +3,14 @@ import type { KnowledgeBaseChunkStrategy } from '@fullstack/shared';
 // 默认切片策略保持 fixed，保证没有显式选择时也能稳定工作。
 export const DEFAULT_CHUNK_STRATEGY: KnowledgeBaseChunkStrategy = 'fixed';
 
-// 前端和共享层使用小写策略名，落库时转换成 Prisma 枚举值。
+// 前端和共享层只暴露 fixed / recursive 两种策略。
+// 持久化层继续兼容旧的 PARAGRAPH / HEADING，避免历史数据失效。
 export function toPersistenceChunkStrategy(
   strategy?: KnowledgeBaseChunkStrategy,
 ): 'FIXED' | 'PARAGRAPH' | 'HEADING' {
   switch (strategy) {
-    case 'paragraph':
+    case 'recursive':
       return 'PARAGRAPH';
-    case 'heading':
-      return 'HEADING';
     case 'fixed':
     default:
       return 'FIXED';
@@ -24,9 +23,8 @@ export function fromPersistenceChunkStrategy(
 ): KnowledgeBaseChunkStrategy {
   switch (strategy) {
     case 'PARAGRAPH':
-      return 'paragraph';
     case 'HEADING':
-      return 'heading';
+      return 'recursive';
     case 'FIXED':
     default:
       return 'fixed';

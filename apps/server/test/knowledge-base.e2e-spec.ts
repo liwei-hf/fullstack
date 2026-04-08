@@ -200,7 +200,7 @@ describe('KnowledgeBase / RAG (e2e)', () => {
     const uploadResponse = await request(app.getHttpServer())
       .post(`/api/knowledge-base/${knowledgeBaseId}/documents/upload`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .field('chunkStrategy', 'paragraph')
+      .field('chunkStrategy', 'recursive')
       .attach('file', Buffer.from('# 员工手册\n\n请假需要审批。'), {
         filename: '员工手册.md',
         contentType: 'text/markdown',
@@ -208,7 +208,7 @@ describe('KnowledgeBase / RAG (e2e)', () => {
       .expect(201);
 
     expect(uploadResponse.body.data.fileName).toBe('员工手册.md');
-    expect(uploadResponse.body.data.chunkStrategy).toBe('paragraph');
+    expect(uploadResponse.body.data.chunkStrategy).toBe('recursive');
 
     const documentId = uploadResponse.body.data.id as string;
     const processedDocument = await waitForDocumentStatus(prisma, documentId, 'READY');
@@ -225,7 +225,7 @@ describe('KnowledgeBase / RAG (e2e)', () => {
       .expect(200);
 
     expect(listResponse.body.data[0].status).toBe('READY');
-    expect(listResponse.body.data[0].chunkStrategy).toBe('paragraph');
+    expect(listResponse.body.data[0].chunkStrategy).toBe('recursive');
   });
 
   it('应该删除空知识库并一并清理 qaLog', async () => {
@@ -309,7 +309,7 @@ describe('KnowledgeBase / RAG (e2e)', () => {
     const importResponse = await request(app.getHttpServer())
       .post(`/api/knowledge-base/${knowledgeBaseId}/import-zip`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .field('chunkStrategy', 'heading')
+      .field('chunkStrategy', 'recursive')
       .attach('file', zipBuffer, {
         filename: 'docs.zip',
         contentType: 'application/zip',
@@ -317,7 +317,7 @@ describe('KnowledgeBase / RAG (e2e)', () => {
       .expect(201);
 
     expect(importResponse.body.data.fileName).toBe('docs.zip');
-    expect(importResponse.body.data.chunkStrategy).toBe('heading');
+    expect(importResponse.body.data.chunkStrategy).toBe('recursive');
 
     const importJobId = importResponse.body.data.id as string;
     const importJob = await waitForImportJobStatus(prisma, importJobId, 'COMPLETED');

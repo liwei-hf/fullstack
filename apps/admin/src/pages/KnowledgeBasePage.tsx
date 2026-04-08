@@ -47,12 +47,11 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const CHUNK_STRATEGY_LABELS: Record<KnowledgeBaseChunkStrategy, string> = {
-  fixed: '固定长度',
-  paragraph: '段落优先',
-  heading: '标题结构',
+  fixed: '固定尺寸',
+  recursive: '递归切片',
 };
 
-const CHUNK_STRATEGY_OPTIONS: KnowledgeBaseChunkStrategy[] = ['fixed', 'heading'];
+const CHUNK_STRATEGY_OPTIONS: KnowledgeBaseChunkStrategy[] = ['fixed', 'recursive'];
 const DOCUMENT_PAGE_SIZE = 10;
 
 function parseSuggestedQuestions(input: string) {
@@ -806,8 +805,8 @@ export default function KnowledgeBasePage() {
               </Select>
               <p className="text-xs text-slate-500">
                 {selectedChunkStrategy === 'fixed'
-                  ? '适合通用文档，按固定长度切片并保留重叠窗口。'
-                  : '优先按标题和章节结构切片，适合 Markdown 或层级清晰的规范文档。'}
+                  ? '适合追求 chunk 尺寸稳定的场景，按固定窗口切片并保留重叠内容。'
+                  : '优先按段落、换行和句子边界递归切片，适合大多数自然语言文档。'}
               </p>
             </div>
           </div>
