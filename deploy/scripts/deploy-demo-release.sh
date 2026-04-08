@@ -178,6 +178,8 @@ cd "${TARGET_RELEASE}"
 
 pnpm install --frozen-lockfile --filter @fullstack/server...
 pnpm --filter @fullstack/server prisma generate
+pnpm db:push
+pnpm db:seed
 
   ln -sfn "${TARGET_RELEASE}" "${CURRENT_LINK}"
 
